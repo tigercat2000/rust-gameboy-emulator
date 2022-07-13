@@ -87,6 +87,40 @@ impl From<u8> for Register16Indirect {
 }
 
 #[derive(Debug, PartialEq, Eq)]
+/// Accumulator / Flags operations
+pub enum AccumulatorFlagOp {
+    RotateLeftCarryA,
+    RotateRightCarryA,
+    RotateLeftA,
+    RotateRightA,
+    /// DAA
+    DecimalAdjustAfterAddition,
+    /// CPL
+    ComplementAccumulator,
+    /// SCF
+    SetCarryFlag,
+    /// CCF
+    ComplementCarryFlag,
+}
+
+/// Must only pass 3 bits to this
+impl From<u8> for AccumulatorFlagOp {
+    fn from(register: u8) -> Self {
+        match register {
+            0 => Self::RotateLeftCarryA,
+            1 => Self::RotateRightCarryA,
+            2 => Self::RotateLeftA,
+            3 => Self::RotateRightA,
+            4 => Self::DecimalAdjustAfterAddition,
+            5 => Self::ComplementAccumulator,
+            6 => Self::SetCarryFlag,
+            7 => Self::ComplementCarryFlag,
+            _ => unreachable!(), // Only 3 bits are allowed to be passed here
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
 pub enum Instruction {
     Nop,
     LoadSP(u16),
@@ -101,19 +135,7 @@ pub enum Instruction {
     Increment(Register8),
     Decrement(Register8),
     LoadImmediate(Register8, u8),
-    // Accumulator / Flags operations
-    RotateLeftCarryA,
-    RotateRightCarryA,
-    RotateLeftA,
-    RotateRightA,
-    /// DAA
-    DecimalAdjustAfterAddition,
-    /// CPL
-    ComplementAccumulator,
-    /// SCF
-    SetCarryFlag,
-    /// CCF
-    ComplementCarryFlag,
+    AccumulatorFlag(AccumulatorFlagOp),
 }
 
 impl Instruction {
@@ -179,19 +201,7 @@ impl Instruction {
                 Ok((rest, Instruction::LoadImmediate(register, immediate)))
             }
             (0b00, acc_flag_op, 0b111) => {
-                let acc_flag_op = match acc_flag_op {
-                    0 => Instruction::RotateLeftCarryA,
-                    1 => Instruction::RotateRightCarryA,
-                    2 => Instruction::RotateLeftA,
-                    3 => Instruction::RotateRightA,
-                    4 => Instruction::DecimalAdjustAfterAddition,
-                    5 => Instruction::ComplementAccumulator,
-                    6 => Instruction::SetCarryFlag,
-                    7 => Instruction::ComplementCarryFlag,
-                    _ => unreachable!(),
-                };
-
-                Ok((rest, acc_flag_op))
+                Ok((rest, Instruction::AccumulatorFlag(acc_flag_op.into())))
             }
             _ => unimplemented!(),
         }
@@ -285,12 +295,12 @@ mod test {
     test_success!(load_l_imm, [0x2E, 0x69] => Instruction::LoadImmediate(Register8::L, 0x69));
     test_success!(load_a_imm, [0x3E, 0x69] => Instruction::LoadImmediate(Register8::A, 0x69));
     // ACC ops
-    test_success!(rotate_left_carry_a, [0x07] => Instruction::RotateLeftCarryA);
-    test_success!(rotate_left_a, [0x17] => Instruction::RotateLeftA);
-    test_success!(decimal_adjust_after_addition, [0x27] => Instruction::DecimalAdjustAfterAddition);
-    test_success!(set_carry_flag, [0x37] => Instruction::SetCarryFlag);
-    test_success!(rotate_right_carry_a, [0x0F] => Instruction::RotateRightCarryA);
-    test_success!(rotate_right_a, [0x1F] => Instruction::RotateRightA);
-    test_success!(complement_accumulator, [0x2F] => Instruction::ComplementAccumulator);
-    test_success!(complement_carry_flag, [0x3F] => Instruction::ComplementCarryFlag);
+    test_success!(rotate_left_carry_a, [0x07] => Instruction::AccumulatorFlag(AccumulatorFlagOp::RotateLeftCarryA));
+    test_success!(rotate_left_a, [0x17] => Instruction::AccumulatorFlag(AccumulatorFlagOp::RotateLeftA));
+    test_success!(decimal_adjust_after_addition, [0x27] => Instruction::AccumulatorFlag(AccumulatorFlagOp::DecimalAdjustAfterAddition));
+    test_success!(set_carry_flag, [0x37] => Instruction::AccumulatorFlag(AccumulatorFlagOp::SetCarryFlag));
+    test_success!(rotate_right_carry_a, [0x0F] => Instruction::AccumulatorFlag(AccumulatorFlagOp::RotateRightCarryA));
+    test_success!(rotate_right_a, [0x1F] => Instruction::AccumulatorFlag(AccumulatorFlagOp::RotateRightA));
+    test_success!(complement_accumulator, [0x2F] => Instruction::AccumulatorFlag(AccumulatorFlagOp::ComplementAccumulator));
+    test_success!(complement_carry_flag, [0x3F] => Instruction::AccumulatorFlag(AccumulatorFlagOp::ComplementCarryFlag));
 }
