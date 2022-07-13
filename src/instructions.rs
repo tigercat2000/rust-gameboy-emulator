@@ -101,6 +101,19 @@ pub enum Instruction {
     Increment(Register8),
     Decrement(Register8),
     LoadImmediate(Register8, u8),
+    // Accumulator / Flags operations
+    RotateLeftCarryA,
+    RotateRightCarryA,
+    RotateLeftA,
+    RotateRightA,
+    /// DAA
+    DecimalAdjustAfterAddition,
+    /// CPL
+    ComplementAccumulator,
+    /// SCF
+    SetCarryFlag,
+    /// CCF
+    ComplementCarryFlag,
 }
 
 impl Instruction {
@@ -164,6 +177,21 @@ impl Instruction {
                 let register = register.into();
                 let (rest, immediate) = u8(rest)?;
                 Ok((rest, Instruction::LoadImmediate(register, immediate)))
+            }
+            (0b00, acc_flag_op, 0b111) => {
+                let acc_flag_op = match acc_flag_op {
+                    0 => Instruction::RotateLeftCarryA,
+                    1 => Instruction::RotateRightCarryA,
+                    2 => Instruction::RotateLeftA,
+                    3 => Instruction::RotateRightA,
+                    4 => Instruction::DecimalAdjustAfterAddition,
+                    5 => Instruction::ComplementAccumulator,
+                    6 => Instruction::SetCarryFlag,
+                    7 => Instruction::ComplementCarryFlag,
+                    _ => unreachable!(),
+                };
+
+                Ok((rest, acc_flag_op))
             }
             _ => unimplemented!(),
         }
@@ -256,4 +284,13 @@ mod test {
     test_success!(load_e_imm, [0x1E, 0x69] => Instruction::LoadImmediate(Register8::E, 0x69));
     test_success!(load_l_imm, [0x2E, 0x69] => Instruction::LoadImmediate(Register8::L, 0x69));
     test_success!(load_a_imm, [0x3E, 0x69] => Instruction::LoadImmediate(Register8::A, 0x69));
+    // ACC ops
+    test_success!(rotate_left_carry_a, [0x07] => Instruction::RotateLeftCarryA);
+    test_success!(rotate_left_a, [0x17] => Instruction::RotateLeftA);
+    test_success!(decimal_adjust_after_addition, [0x27] => Instruction::DecimalAdjustAfterAddition);
+    test_success!(set_carry_flag, [0x37] => Instruction::SetCarryFlag);
+    test_success!(rotate_right_carry_a, [0x0F] => Instruction::RotateRightCarryA);
+    test_success!(rotate_right_a, [0x1F] => Instruction::RotateRightA);
+    test_success!(complement_accumulator, [0x2F] => Instruction::ComplementAccumulator);
+    test_success!(complement_carry_flag, [0x3F] => Instruction::ComplementCarryFlag);
 }
