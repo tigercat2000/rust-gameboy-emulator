@@ -1,5 +1,7 @@
 use std::io::Read;
 
+use tracing::{event, Level};
+
 #[derive(Debug)]
 pub struct MemoryBus {
     program: Vec<u8>,
@@ -16,8 +18,12 @@ impl MemoryBus {
         match addr {
             0x0000..=0x7FFF => self.program[addr as usize],
             0xFF00..=0xFF7F => {
-                println!("IO register read: {:#X}", addr);
-                0
+                event!(Level::INFO, "IO register read @{:#X}", addr);
+                if addr == 0xFF44 {
+                    0x90 // expected for 0xFF44
+                } else {
+                    0
+                }
             }
             _ => unimplemented!(),
         }
@@ -35,8 +41,25 @@ impl MemoryBus {
 
     pub fn write_u8(&self, addr: u16, byte: u8) {
         match addr {
+            // VRAM!
+            0x8000..=0x9FFF => {
+                event!(
+                    Level::INFO,
+                    "VRAM write @{:#X}: {:#X} '{}'",
+                    addr,
+                    byte,
+                    byte as char
+                );
+            }
+            // I/O registers
             0xFF00..=0xFF7F => {
-                println!("IO register write: {:#X} -> {:#X}", byte, addr);
+                event!(
+                    Level::INFO,
+                    "IO register write @{:#X}: {:#X} '{}'",
+                    addr,
+                    byte,
+                    byte as char
+                );
             }
             _ => panic!("Illegal memory write at {:#X}", addr),
         }

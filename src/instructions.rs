@@ -6,7 +6,7 @@ use nom::{
     IResult,
 };
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum Condition {
     NZ,
     Z,
@@ -27,7 +27,7 @@ impl From<u8> for Condition {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum Register16 {
     BC,
     DE,
@@ -48,7 +48,7 @@ impl From<u8> for Register16 {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum Register8 {
     B,
     C,
@@ -77,7 +77,7 @@ impl From<u8> for Register8 {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum Register16Indirect {
     BC,
     DE,
@@ -100,7 +100,7 @@ impl From<u8> for Register16Indirect {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum Register16Stack {
     BC,
     DE,
@@ -121,7 +121,7 @@ impl From<u8> for Register16Stack {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 /// Accumulator / Flags operations
 pub enum AccumulatorFlagOp {
     /// RLCA
@@ -159,7 +159,7 @@ impl From<u8> for AccumulatorFlagOp {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum AluOp {
     Add,
     /// ADC
@@ -191,7 +191,7 @@ impl From<u8> for AluOp {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum BitwiseOp {
     /// RLC
     RotateLeftCarry,
@@ -228,7 +228,7 @@ impl From<u8> for BitwiseOp {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum Instruction {
     /// NOP
     Nop,
@@ -274,7 +274,7 @@ pub enum Instruction {
     AddSp(i8),
     /// LDH A,(n) / LD (0xFF00 + u8) A,(n)
     LoadAHighPage(u8),
-    /// LD HL, SP
+    /// LD HL, SP+u8
     LoadHLSP(i8),
     /// POP r16
     Pop(Register16Stack),
@@ -321,6 +321,89 @@ pub enum Instruction {
     ResetBit(u8, Register8),
     /// SET u8, r8
     SetBit(u8, Register8),
+}
+
+impl std::fmt::Display for Instruction {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // write!(f, "Instruction::")?;
+        match self {
+            Instruction::Nop => write!(f, "Nop"),
+            Instruction::LoadSP(immediate) => write!(f, "LoadSP({:#X})", immediate),
+            Instruction::Stop => write!(f, "Stop"),
+            Instruction::JumpRelative(offset) => write!(f, "JumpRelative({:#X})", offset),
+            Instruction::JumpRelativeConditional(condition, offset) => {
+                write!(
+                    f,
+                    "JumpRelativeConditional({:#X?}, {:#X})",
+                    condition, offset
+                )
+            }
+            Instruction::LoadImmediate16(register, immediate) => {
+                write!(f, "LoadImmediate16({:#X?}, {:#X})", register, immediate)
+            }
+            Instruction::AddHLRegister(register) => write!(f, "AddHLRegister({:#X?})", register),
+            Instruction::LoadIndirectA(register) => write!(f, "LoadIndirectA({:#X?})", register),
+            Instruction::LoadAIndirect(register) => write!(f, "LoadAIndirect({:#X?})", register),
+            Instruction::Increment16(register) => write!(f, "Increment16({:#X?})", register),
+            Instruction::Decrement16(register) => write!(f, "Decrement16({:#X?})", register),
+            Instruction::Increment(register) => write!(f, "Increment({:#X?})", register),
+            Instruction::Decrement(register) => write!(f, "Decrement({:#X?})", register),
+            Instruction::LoadImmediate(register, immediate) => {
+                write!(f, "LoadImmediate({:#X?}, {:#X})", register, immediate)
+            }
+            Instruction::AccumulatorFlag(flag_op) => write!(f, "AccumulatorFlag({:#X?})", flag_op),
+            Instruction::Halt => write!(f, "Halt"),
+            Instruction::Load(register1, register2) => {
+                write!(f, "Load({:#X?}, {:#X?})", register1, register2)
+            }
+            Instruction::Alu(alu_op, register) => {
+                write!(f, "Alu({:#X?}, {:#X?})", alu_op, register)
+            }
+            Instruction::RetConditional(condition) => {
+                write!(f, "RetConditional({:#X?})", condition)
+            }
+            Instruction::LoadHighPageA(offset) => write!(f, "LoadHighPageA({:#X})", offset),
+            Instruction::AddSp(offset) => write!(f, "AddSp({:#X})", offset),
+            Instruction::LoadAHighPage(offset) => write!(f, "LoadAHighPage({:#X})", offset),
+            Instruction::LoadHLSP(offset) => write!(f, "LoadHLSP({:#X})", offset),
+            Instruction::Pop(register) => write!(f, "Pop({:#X?})", register),
+            Instruction::Ret => write!(f, "Ret"),
+            Instruction::RetInterrupt => write!(f, "RetInterrupt"),
+            Instruction::JumpHL => write!(f, "JumpHL"),
+            Instruction::LoadSPHL => write!(f, "LoadSPHL"),
+            Instruction::JumpConditional(condition, register) => {
+                write!(f, "JumpConditional({:#X?}, {:#X?})", condition, register)
+            }
+            Instruction::LoadHighPageIndirectA => write!(f, "LoadHighPageIndirectA"),
+            Instruction::LoadAHighPageIndirect => write!(f, "LoadAHighPageIndirect"),
+            Instruction::LoadIndirectImmediateA(immediate) => {
+                write!(f, "LoadIndirectImmediateA({:#X})", immediate)
+            }
+            Instruction::LoadAIndirectImmediate(immediate) => {
+                write!(f, "LoadAIndirectImmediate({:#X})", immediate)
+            }
+            Instruction::Jump(addr) => write!(f, "Jump({:#X})", addr),
+            Instruction::DisableInterrupts => write!(f, "DisableInterrupts"),
+            Instruction::EnableInterrupts => write!(f, "EnableInterrupts"),
+            Instruction::CallConditional(condition, addr) => {
+                write!(f, "CallConditional({:#X?}, {:#X})", condition, addr)
+            }
+            Instruction::Call(addr) => write!(f, "Call({:#X})", addr),
+            Instruction::Push(register) => write!(f, "Push({:#X?})", register),
+            Instruction::AluImmediate(alu_op, immediate) => {
+                write!(f, "AluImmediate({:#X?}, {:#X})", alu_op, immediate)
+            }
+            Instruction::Reset(reset_vector) => write!(f, "Reset({:#X})", reset_vector),
+            Instruction::Bitwise(bit_op, register) => {
+                write!(f, "Bitwise({:#X?}, {:#X?})", bit_op, register)
+            }
+            Instruction::Bit(bit, register) => write!(f, "Bit({:#X}, {:#X?})", bit, register),
+            Instruction::ResetBit(bit, register) => {
+                write!(f, "ResetBit({:#X}, {:#X?})", bit, register)
+            }
+            Instruction::SetBit(bit, register) => write!(f, "SetBit({:#X}, {:#X?})", bit, register),
+        }
+    }
 }
 
 impl Instruction {
