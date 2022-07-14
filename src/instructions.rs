@@ -124,9 +124,13 @@ impl From<u8> for Register16Stack {
 #[derive(Debug, PartialEq, Eq)]
 /// Accumulator / Flags operations
 pub enum AccumulatorFlagOp {
+    /// RLCA
     RotateLeftCarryA,
+    /// RRCA
     RotateRightCarryA,
+    /// RLA
     RotateLeftA,
+    /// RRA
     RotateRightA,
     /// DAA
     DecimalAdjustAfterAddition,
@@ -226,62 +230,149 @@ impl From<u8> for BitwiseOp {
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Instruction {
+    /// NOP
     Nop,
+    /// LD SP, u16
     LoadSP(u16),
+    /// STOP
     Stop,
+    /// JR i8
     JumpRelative(i8),
+    /// JR Z, i8
     JumpRelativeConditional(Condition, i8),
-    /// Loads are always 0 <- 1
+    /// LD r16, u16
     LoadImmediate16(Register16, u16),
+    /// ADD HL, r16
     AddHLRegister(Register16),
-    /// Loads are always 0 <- 1
+    /// LD (r16), A
     LoadIndirectA(Register16Indirect),
-    /// Loads are always 0 <- 1
+    /// LD A, (r16)
     LoadAIndirect(Register16Indirect),
+    /// INC r16
     Increment16(Register16),
+    /// DEC r16
     Decrement16(Register16),
+    /// INC r8
     Increment(Register8),
+    /// DEC r8
     Decrement(Register8),
-    /// Loads are always 0 <- 1
+    /// LD r8, u8
     LoadImmediate(Register8, u8),
+    /// See [`AccumulatorFlagOp`]
     AccumulatorFlag(AccumulatorFlagOp),
+    /// HALT
     Halt,
-    /// Loads are always 0 <- 1
+    /// LD r8, r8
     Load(Register8, Register8),
-    /// ALU ops are always A <- r8
+    /// See [`AluOp`]
     Alu(AluOp, Register8),
+    /// RET Z
     RetConditional(Condition),
     /// LDH (n),A / LD (0xFF00 + u8) (n),A
     LoadHighPageA(u8),
+    /// ADD SP, i8
     AddSp(i8),
     /// LDH A,(n) / LD (0xFF00 + u8) A,(n)
     LoadAHighPage(u8),
+    /// LD HL, SP
     LoadHLSP(i8),
+    /// POP r16
     Pop(Register16Stack),
+    /// RET
     Ret,
+    /// RETI
     RetInterrupt,
+    /// JP HL
     JumpHL,
+    /// LD SP, HL
     LoadSPHL,
+    /// JP Z, u16
     JumpConditional(Condition, u16),
+    /// LD (C), A
     LoadHighPageIndirectA,
+    /// LD A, (C)
     LoadAHighPageIndirect,
+    /// LD (u16), A
     LoadIndirectImmediateA(u16),
+    /// LD A, (u16)
     LoadAIndirectImmediate(u16),
+    /// JP u16
     Jump(u16),
     /// DI
     DisableInterrupts,
     /// EI
     EnableInterrupts,
+    /// CALL Z, u16
     CallConditional(Condition, u16),
+    /// CALL u16
     Call(u16),
+    /// PUSH r16
     Push(Register16Stack),
+    /// See [`AluOp`]
     AluImmediate(AluOp, u8),
+    /// RST 00/08/...
     /// Call to 00EXP000
     Reset(u8),
+    /// See [`BitwiseOp`]
     Bitwise(BitwiseOp, Register8),
+    /// BIT u8, r8
     Bit(u8, Register8),
+    /// RES u8, r8
     ResetBit(u8, Register8),
+    /// SET u8, r8
     SetBit(u8, Register8),
+}
+
+impl Instruction {
+    pub fn byte_len(&self) -> u16 {
+        match *self {
+            Instruction::Nop => 1,
+            Instruction::LoadSP(_) => 3,
+            Instruction::Stop => 2,
+            Instruction::JumpRelative(_) => 2,
+            Instruction::JumpRelativeConditional(_, _) => 2,
+            Instruction::LoadImmediate16(_, _) => 3,
+            Instruction::AddHLRegister(_) => 1,
+            Instruction::LoadIndirectA(_) => 1,
+            Instruction::LoadAIndirect(_) => 1,
+            Instruction::Increment16(_) => 1,
+            Instruction::Decrement16(_) => 1,
+            Instruction::Increment(_) => 1,
+            Instruction::Decrement(_) => 1,
+            Instruction::LoadImmediate(_, _) => 2,
+            Instruction::AccumulatorFlag(_) => 1,
+            Instruction::Halt => 1,
+            Instruction::Load(_, _) => 1,
+            Instruction::Alu(_, _) => 1,
+            Instruction::RetConditional(_) => 1,
+            Instruction::LoadHighPageA(_) => 2,
+            Instruction::AddSp(_) => 2,
+            Instruction::LoadAHighPage(_) => 2,
+            Instruction::LoadHLSP(_) => 2,
+            Instruction::Pop(_) => 1,
+            Instruction::Ret => 1,
+            Instruction::RetInterrupt => 1,
+            Instruction::JumpHL => 1,
+            Instruction::LoadSPHL => 1,
+            Instruction::JumpConditional(_, _) => 3,
+            Instruction::LoadHighPageIndirectA => 1,
+            Instruction::LoadAHighPageIndirect => 1,
+            Instruction::LoadIndirectImmediateA(_) => 3,
+            Instruction::LoadAIndirectImmediate(_) => 3,
+            Instruction::Jump(_) => 3,
+            Instruction::DisableInterrupts => 1,
+            Instruction::EnableInterrupts => 1,
+            Instruction::CallConditional(_, _) => 3,
+            Instruction::Call(_) => 3,
+            Instruction::Push(_) => 1,
+            Instruction::AluImmediate(_, _) => 2,
+            Instruction::Reset(_) => 1,
+            Instruction::Bitwise(_, _) => 2,
+            Instruction::Bit(_, _) => 2,
+            Instruction::ResetBit(_, _) => 2,
+            Instruction::SetBit(_, _) => 2,
+        }
+    }
 }
 
 impl Instruction {
