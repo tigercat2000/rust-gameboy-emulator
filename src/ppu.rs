@@ -31,23 +31,23 @@ impl PPU {
                 let base_address = if memory_bus.get_u8(0xFF40).get_bit(4) {
                     0x8000
                 } else {
-                    0x9000
+                    0x8800
                 };
 
                 let address_offset = if base_address == 0x8000 {
                     index as u16 * 16
                 } else {
-                    (index as i8 as i16 + 128) as u16
+                    (index as i8 as i16 + 128) as u16 * 16
                 };
 
-                base_address + address_offset
+                (base_address + address_offset) as u16
             })
             .map(|tile_address| {
                 let mut pixels: Vec<u8> = vec![];
                 for line in 0..8 {
                     let lsb_byte = memory_bus.get_u8(tile_address + line * 2);
                     let msb_byte = memory_bus.get_u8(tile_address + line * 2 + 1);
-                    for pixel in 0..8 {
+                    for pixel in (0..8).rev() {
                         let color_id =
                             (msb_byte.get_bit(pixel) as u8) << 1u8 | lsb_byte.get_bit(pixel) as u8;
 
@@ -74,10 +74,14 @@ impl PPU {
             })
             .enumerate()
             .for_each(|(index, tile)| {
-                let origin_x = (index * 8) % 256;
-                let origin_y = ((index * 8) / 256) * 8;
+                let origin_x = (index as usize * 8) % 256;
+                let origin_y = ((index as usize * 8) / 256) * 8;
 
-                info!("Tile {} goes at ({}, {})", index, origin_x, origin_y);
+                // info!("Tile {} goes at ({}, {})", index, origin_x, origin_y);
+
+                // if index == 0 {
+                //     info!("Tile 0: {:#?}", tile);
+                // }
 
                 if origin_x >= 160 || origin_y >= 140 {
                     // reject for now
@@ -86,10 +90,6 @@ impl PPU {
 
                 for y in 0..8 {
                     for x in 0..8 {
-                        if index == 544 {
-                            info!("Laying out ({x}, {y})");
-                        }
-
                         let color = tile[x + (y * 8)];
                         frame_buffer[(origin_x + x) + ((origin_y + y) * 160)] = color;
                     }
