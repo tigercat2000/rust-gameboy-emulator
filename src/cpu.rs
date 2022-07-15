@@ -21,8 +21,8 @@ enum Flag {
 }
 
 #[allow(non_snake_case)]
-#[derive(Debug)]
-pub struct CPU<'a> {
+#[derive(Debug, Default)]
+pub struct CPU {
     pub Accumulator: u8,
     pub Flags: u8,
     pub B: u8,
@@ -35,11 +35,9 @@ pub struct CPU<'a> {
     pub SP: u16,
     pub PC: u16,
     pub stop: bool,
-
-    memory_bus: &'a MemoryBus,
 }
 
-impl<'a> std::fmt::Display for CPU<'a> {
+impl std::fmt::Display for CPU {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         writeln!(f, "CPU Dump")?;
         writeln!(f, "\tFlags")?;
@@ -64,30 +62,7 @@ impl<'a> std::fmt::Display for CPU<'a> {
     }
 }
 
-impl<'a> std::fmt::UpperHex for CPU<'a> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        std::fmt::Display::fmt(self, f)
-    }
-}
-
-impl<'a> CPU<'a> {
-    pub fn new(bus: &'a MemoryBus) -> Self {
-        CPU {
-            Accumulator: 0,
-            Flags: 0,
-            B: 0,
-            C: 0,
-            D: 0,
-            E: 0,
-            H: 0,
-            L: 0,
-            SP: 0,
-            PC: 0,
-            stop: false,
-            memory_bus: bus,
-        }
-    }
-
+impl CPU {
     fn get_bc(&self) -> u16 {
         ((self.B as u16) << 8) | (self.C as u16)
     }
@@ -124,17 +99,18 @@ impl<'a> CPU<'a> {
     //     byte
     // }
 
-    pub fn next_instruction(&mut self) -> Instruction {
-        let instr = self.memory_bus.get_instr(self.PC);
+    pub fn next_instruction(&mut self, memory_bus: &MemoryBus) -> Instruction {
+        let instr = memory_bus.get_instr(self.PC);
         let (_, actual_instr) =
             Instruction::parse(&instr).expect("Instruction parsing should never fail");
         self.PC = self.PC.wrapping_add(actual_instr.byte_len());
         actual_instr
     }
 
-    pub fn tick(&mut self) {
+    pub fn tick(&mut self, memory_bus: &MemoryBus) -> u32 {
         let old_pc = self.PC;
-        let instr = self.next_instruction();
+        let instr = self.next_instruction(memory_bus);
+        let mut action_taken = false;
         debug!("Executing instruction {} at {:#X}", instr, old_pc);
         match instr {
             Instruction::Nop => {}
@@ -165,21 +141,21 @@ impl<'a> CPU<'a> {
                 }
                 Register8::IndirectHL => {
                     let addr = self.get_hl();
-                    self.memory_bus.write_u8(addr, immediate);
+                    memory_bus.write_u8(addr, immediate);
                 }
                 Register8::A => {
                     self.Accumulator = immediate;
                 }
             },
             Instruction::LoadIndirectImmediateA(addr) => {
-                self.memory_bus.write_u8(addr, self.Accumulator);
+                memory_bus.write_u8(addr, self.Accumulator);
             }
             Instruction::LoadAIndirectImmediate(addr) => {
-                self.Accumulator = self.memory_bus.get_u8(addr);
+                self.Accumulator = memory_bus.get_u8(addr);
             }
             Instruction::LoadHighPageA(offset) => {
                 let real_address = 0xFF00 + (offset as u16);
-                self.memory_bus.write_u8(real_address, self.Accumulator);
+                memory_bus.write_u8(real_address, self.Accumulator);
             }
             Instruction::AccumulatorFlag(af_op) => match af_op {
                 AccumulatorFlagOp::RotateLeftCarryA => {
@@ -212,7 +188,7 @@ impl<'a> CPU<'a> {
                 }
             },
             Instruction::Alu(alu_op, register) => {
-                ALU::handle_op(self, alu_op, self.read_register(register))
+                ALU::handle_op(self, alu_op, self.read_register(register, memory_bus))
             }
             Instruction::AluImmediate(alu_op, immediate) => ALU::handle_op(self, alu_op, immediate),
             Instruction::JumpConditional(condition, addr) => {
@@ -223,6 +199,7 @@ impl<'a> CPU<'a> {
                     Condition::C => self.get_flag(Flag::C),
                 };
                 if jump {
+                    action_taken = true;
                     self.PC = addr;
                 }
             }
@@ -245,11 +222,11 @@ impl<'a> CPU<'a> {
             },
             Instruction::LoadAIndirect(reg_with_addr) => {
                 let addr = self.get_indirect(reg_with_addr);
-                self.Accumulator = self.memory_bus.get_u8(addr);
+                self.Accumulator = memory_bus.get_u8(addr);
             }
             Instruction::LoadIndirectA(reg_with_addr) => {
                 let addr = self.get_indirect(reg_with_addr);
-                self.memory_bus.write_u8(addr, self.Accumulator);
+                memory_bus.write_u8(addr, self.Accumulator);
             }
             Instruction::Increment16(register) => match register {
                 Register16::BC => {
@@ -356,13 +333,15 @@ impl<'a> CPU<'a> {
                 }
             },
             Instruction::Load(reg1, reg2) => {
-                self.write_register(reg1, reg2);
+                self.write_register(reg1, reg2, memory_bus);
             }
             _ => {
                 error!("Instruction not implemented: {}", instr);
                 unimplemented!("Instruction not implemented: {}", instr)
             }
         }
+
+        instr.ticks(action_taken)
     }
 
     fn get_indirect(&mut self, register: Register16Indirect) -> u16 {
@@ -412,13 +391,18 @@ impl<'a> CPU<'a> {
         }
     }
 
-    fn write_register(&mut self, target: Register8, source: Register8) {
-        let read = self.read_register(source);
+    fn write_register(&mut self, target: Register8, source: Register8, memory_bus: &MemoryBus) {
+        let read = self.read_register(source, memory_bus);
         trace!("Writing {:?} -> {:?}", source, target);
-        self.write_register_immediate(target, read);
+        self.write_register_immediate(target, read, memory_bus);
     }
 
-    fn write_register_immediate(&mut self, target: Register8, immediate: u8) {
+    fn write_register_immediate(
+        &mut self,
+        target: Register8,
+        immediate: u8,
+        memory_bus: &MemoryBus,
+    ) {
         trace!("Writing {:#X} -> {:?}", immediate, target);
         match target {
             Register8::B => self.B = immediate,
@@ -427,12 +411,12 @@ impl<'a> CPU<'a> {
             Register8::E => self.E = immediate,
             Register8::H => self.H = immediate,
             Register8::L => self.L = immediate,
-            Register8::IndirectHL => self.memory_bus.write_u8(self.get_hl(), immediate),
+            Register8::IndirectHL => memory_bus.write_u8(self.get_hl(), immediate),
             Register8::A => self.Accumulator = immediate,
         }
     }
 
-    fn read_register(&self, register: Register8) -> u8 {
+    fn read_register(&self, register: Register8, memory_bus: &MemoryBus) -> u8 {
         match register {
             Register8::B => self.B,
             Register8::C => self.C,
@@ -440,7 +424,7 @@ impl<'a> CPU<'a> {
             Register8::E => self.E,
             Register8::H => self.H,
             Register8::L => self.L,
-            Register8::IndirectHL => self.memory_bus.get_u8(self.get_hl()),
+            Register8::IndirectHL => memory_bus.get_u8(self.get_hl()),
             Register8::A => self.Accumulator,
         }
     }

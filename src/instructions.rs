@@ -456,6 +456,88 @@ impl Instruction {
             Instruction::SetBit(_, _) => 2,
         }
     }
+
+    pub fn ticks(&self, action_taken: bool) -> u32 {
+        match self {
+            Instruction::Nop => 1,
+            Instruction::LoadSP(_) => 3,
+            Instruction::Stop => 1,
+            Instruction::JumpRelative(_) => 3,
+            Instruction::JumpRelativeConditional(_, _) => {
+                if action_taken {
+                    3
+                } else {
+                    2
+                }
+            }
+            Instruction::LoadImmediate16(_, _) => 3,
+            Instruction::AddHLRegister(_) => 2,
+            Instruction::LoadIndirectA(_) => 2,
+            Instruction::LoadAIndirect(_) => 2,
+            Instruction::Increment16(_) => 2,
+            Instruction::Decrement16(_) => 2,
+            Instruction::Increment(_) => 1,
+            Instruction::Decrement(_) => 1,
+            Instruction::LoadImmediate(Register8::IndirectHL, _) => 3,
+            Instruction::LoadImmediate(_, _) => 2,
+            Instruction::AccumulatorFlag(_) => 1,
+            Instruction::Halt => 1,
+            Instruction::Load(Register8::IndirectHL, _) => 2,
+            Instruction::Load(_, Register8::IndirectHL) => 2,
+            Instruction::Load(_, _) => 1,
+            Instruction::Alu(_, Register8::IndirectHL) => 2,
+            Instruction::Alu(_, _) => 1,
+            Instruction::RetConditional(_) => {
+                if action_taken {
+                    5
+                } else {
+                    2
+                }
+            }
+            Instruction::LoadHighPageA(_) => 3,
+            Instruction::AddSp(_) => 4,
+            Instruction::LoadAHighPage(_) => 3,
+            Instruction::LoadHLSP(_) => 3,
+            Instruction::Pop(_) => 4,
+            Instruction::Ret => 4,
+            Instruction::RetInterrupt => 4,
+            Instruction::JumpHL => 1,
+            Instruction::LoadSPHL => 2,
+            Instruction::JumpConditional(_, _) => {
+                if action_taken {
+                    4
+                } else {
+                    3
+                }
+            }
+            Instruction::LoadHighPageIndirectA => 2,
+            Instruction::LoadAHighPageIndirect => 2,
+            Instruction::LoadIndirectImmediateA(_) => 4,
+            Instruction::LoadAIndirectImmediate(_) => 4,
+            Instruction::Jump(_) => 4,
+            Instruction::DisableInterrupts => 1,
+            Instruction::EnableInterrupts => 1,
+            Instruction::CallConditional(_, _) => {
+                if action_taken {
+                    6
+                } else {
+                    3
+                }
+            }
+            Instruction::Call(_) => 6,
+            Instruction::Push(_) => 4,
+            Instruction::AluImmediate(_, _) => 2,
+            Instruction::Reset(_) => 4,
+            Instruction::Bitwise(_, Register8::IndirectHL) => 4,
+            Instruction::Bitwise(_, _) => 2,
+            Instruction::Bit(_, Register8::IndirectHL) => 3,
+            Instruction::Bit(_, _) => 2,
+            Instruction::ResetBit(_, Register8::IndirectHL) => 4,
+            Instruction::ResetBit(_, _) => 2,
+            Instruction::SetBit(_, Register8::IndirectHL) => 4,
+            Instruction::SetBit(_, _) => 2,
+        }
+    }
 }
 
 impl Instruction {
