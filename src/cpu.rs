@@ -112,6 +112,12 @@ impl CPU {
         let instr = self.next_instruction(memory_bus);
         let mut action_taken = false;
         debug!("Executing instruction {} at {:#X}", instr, old_pc);
+        debug!(
+            "Registers before: BC: {:#X} DE: {:#X} HL: {:#X}",
+            self.get_bc(),
+            self.get_de(),
+            self.get_hl()
+        );
         match instr {
             Instruction::Nop => {}
             Instruction::Jump(target) => {
@@ -156,6 +162,10 @@ impl CPU {
             Instruction::LoadHighPageA(offset) => {
                 let real_address = 0xFF00 + (offset as u16);
                 memory_bus.write_u8(real_address, self.Accumulator);
+            }
+            Instruction::LoadAHighPage(offset) => {
+                let real_address = 0xFF00 + (offset as u16);
+                self.Accumulator = memory_bus.get_u8(real_address);
             }
             Instruction::AccumulatorFlag(af_op) => match af_op {
                 AccumulatorFlagOp::RotateLeftCarryA => {
@@ -211,6 +221,7 @@ impl CPU {
                 Register16::DE => {
                     self.E = immediate.get_bits(0..8) as u8;
                     self.D = immediate.get_bits(8..16) as u8;
+                    trace!("Loaded DE with {:#X}", self.get_de());
                 }
                 Register16::HL => {
                     self.L = immediate.get_bits(0..8) as u8;
@@ -221,8 +232,13 @@ impl CPU {
                 }
             },
             Instruction::LoadAIndirect(reg_with_addr) => {
-                let addr = self.get_indirect(reg_with_addr);
-                self.Accumulator = memory_bus.get_u8(addr);
+                let get_indirect_addr = self.get_indirect(reg_with_addr);
+                trace!(
+                    "Loading A from {:#?} with address {:#X}",
+                    reg_with_addr,
+                    get_indirect_addr
+                );
+                self.Accumulator = memory_bus.get_u8(get_indirect_addr);
             }
             Instruction::LoadIndirectA(reg_with_addr) => {
                 let addr = self.get_indirect(reg_with_addr);
@@ -340,14 +356,20 @@ impl CPU {
                 unimplemented!("Instruction not implemented: {}", instr)
             }
         }
+        debug!(
+            "Registers after: BC: {:#X} DE: {:#X} HL: {:#X}",
+            self.get_bc(),
+            self.get_de(),
+            self.get_hl()
+        );
 
         instr.ticks(action_taken)
     }
 
     fn get_indirect(&mut self, register: Register16Indirect) -> u16 {
         match register {
-            Register16Indirect::BC => ((self.B as u16) << 8) & (self.C as u16),
-            Register16Indirect::DE => ((self.D as u16) << 8) & (self.E as u16),
+            Register16Indirect::BC => self.get_bc(),
+            Register16Indirect::DE => self.get_de(),
             Register16Indirect::HLI => {
                 let addr = self.get_hl();
                 trace!(
@@ -366,6 +388,7 @@ impl CPU {
                     self.H,
                     self.L
                 );
+                trace!("Returning addr {:#X}", addr);
                 addr
             }
             Register16Indirect::HLD => {

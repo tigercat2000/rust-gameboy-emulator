@@ -1,6 +1,6 @@
 use std::{cell::RefCell, io::Read, sync::Mutex};
 
-use tracing::{event, Level};
+use tracing::trace;
 
 #[derive(Debug)]
 #[allow(clippy::upper_case_acronyms)]
@@ -13,6 +13,8 @@ struct LCD {
     pub lcd_y: u8,
     /// LYC
     pub lcd_y_cmp: u8,
+    /// BGP
+    pub background_pallete: u8,
 }
 
 impl Default for LCD {
@@ -22,6 +24,7 @@ impl Default for LCD {
             scroll_y: 0,
             lcd_y: 0,
             lcd_y_cmp: 0,
+            background_pallete: 0,
         }
     }
 }
@@ -29,7 +32,7 @@ impl Default for LCD {
 #[derive(Debug)]
 pub struct MemoryBus {
     program: Vec<u8>,
-    vram: Mutex<RefCell<[u8; 0x1FFF]>>,
+    vram: Mutex<RefCell<[u8; 0x1FFF + 1]>>,
     lcd: Mutex<RefCell<LCD>>,
 }
 
@@ -39,14 +42,17 @@ impl MemoryBus {
         reader.read_to_end(&mut vec).unwrap();
         Self {
             program: vec,
-            vram: Mutex::new(RefCell::new([0; 0x1FFF])),
+            vram: Mutex::new(RefCell::new([0; 0x1FFF + 1])),
             lcd: Mutex::new(RefCell::new(LCD::default())),
         }
     }
 
     pub fn get_u8(&self, addr: u16) -> u8 {
         match addr {
-            0x0000..=0x7FFF => self.program[addr as usize],
+            0x0000..=0x7FFF => {
+                trace!("PROG read @{:#X}", addr);
+                self.program[addr as usize]
+            }
             0x8000..=0x9FFF => {
                 let vram_guard = self.vram.try_lock();
                 match vram_guard {
@@ -58,7 +64,7 @@ impl MemoryBus {
                 }
             }
             0xFF40..=0xFF4B => {
-                event!(Level::INFO, "LCD register read @{:#X}", addr);
+                trace!("LCD register read @{:#X}", addr);
                 let lcd_guard = match self.lcd.try_lock() {
                     Ok(lcd_guard) => lcd_guard,
                     Err(_) => return 0xFF,
@@ -73,11 +79,12 @@ impl MemoryBus {
                     0xFF42 => lcd.scroll_y,
                     0xFF44 => lcd.lcd_y,
                     0xFF45 => lcd.lcd_y_cmp,
+                    0xFF47 => lcd.background_pallete,
                     _ => unimplemented!(),
                 }
             }
             0xFF00..=0xFF7F => {
-                event!(Level::INFO, "IO register read @{:#X}", addr);
+                trace!("IO register read @{:#X}", addr);
                 unimplemented!()
             }
             _ => unimplemented!(),
@@ -98,13 +105,7 @@ impl MemoryBus {
         match addr {
             // VRAM!
             0x8000..=0x9FFF => {
-                event!(
-                    Level::INFO,
-                    "VRAM write @{:#X}: {:#X} '{}'",
-                    addr,
-                    byte,
-                    byte as char
-                );
+                trace!("VRAM write @{:#X}: {:#X} '{}'", addr, byte, byte as char);
                 let vram_guard = match self.vram.try_lock() {
                     Ok(vram_guard) => vram_guard,
                     Err(_) => return,
@@ -117,7 +118,7 @@ impl MemoryBus {
             }
             // LCD
             0xFF40..=0xFF4B => {
-                event!(Level::INFO, "LCD register write @{:#X}: {:#X}", addr, byte);
+                trace!("LCD register write @{:#X}: {:#X}", addr, byte);
                 let lcd_guard = match self.lcd.try_lock() {
                     Ok(lcd_guard) => lcd_guard,
                     Err(_) => return,
@@ -131,12 +132,13 @@ impl MemoryBus {
                     0xFF42 => lcd.scroll_y = byte,
                     0xFF44 => lcd.lcd_y = byte,
                     0xFF45 => lcd.lcd_y_cmp = byte,
+                    0xFF47 => lcd.background_pallete = byte,
                     _ => {}
                 }
             }
             // I/O registers
             0xFF00..=0xFF7F => {
-                event!(Level::INFO, "IO register write @{:#X}: {:#X}", addr, byte);
+                trace!("IO register write @{:#X}: {:#X}", addr, byte);
             }
             _ => panic!("Illegal memory write at {:#X}", addr),
         }
