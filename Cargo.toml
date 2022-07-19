@@ -13,3 +13,4 @@ tracing = "0.1.35"
 tracing-subscriber = { version = "0.3.14", features = ["fmt"] }
 eframe = "0.18.0"
 egui = "0.18.1"
+bytemuck = "1.10.0"

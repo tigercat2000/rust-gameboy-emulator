@@ -8,7 +8,7 @@ pub mod unit_tests;
 use std::{
     cell::RefCell,
     sync::{
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
         mpsc::Receiver,
         Arc, Mutex,
     },
@@ -18,20 +18,39 @@ const GAMEBOY_WIDTH: usize = 160;
 const GAMEBOY_HEIGHT: usize = 144;
 
 use crate::{cpu::CPU, memory_bus::MemoryBus, ppu::PPU};
-use egui::{Color32, Pos2, Rect, Rounding};
+use egui::{color, Color32, ColorImage, PaintCallback, Pos2, Rect, Rounding};
 use tracing::{debug, event, trace, warn, Level};
 
-struct TransitBuffer {
-    is_ready: AtomicBool,
-    rcell: Mutex<RefCell<ppu::FrameBuffer>>,
+struct DoubleBuffer {
+    buffers: [Mutex<ppu::FrameBuffer>; 2],
+    curr_buffer: AtomicUsize,
 }
 
-impl Default for TransitBuffer {
+impl Default for DoubleBuffer {
     fn default() -> Self {
         Self {
-            is_ready: AtomicBool::new(false),
-            rcell: Mutex::new(RefCell::new([0; GAMEBOY_WIDTH * GAMEBOY_HEIGHT])),
+            buffers: [
+                Mutex::new([0; GAMEBOY_HEIGHT * GAMEBOY_WIDTH]),
+                Mutex::new([0; GAMEBOY_HEIGHT * GAMEBOY_WIDTH]),
+            ],
+            curr_buffer: AtomicUsize::new(0),
         }
+    }
+}
+
+impl DoubleBuffer {
+    fn get_current(&self) -> &Mutex<ppu::FrameBuffer> {
+        &self.buffers[self.curr_buffer.load(Ordering::Relaxed)]
+    }
+
+    fn get_off(&self) -> &Mutex<ppu::FrameBuffer> {
+        &self.buffers[(self.curr_buffer.load(Ordering::Relaxed) + 1) % 2]
+    }
+
+    fn swap(&self) {
+        let mut num = self.curr_buffer.load(Ordering::Acquire);
+        num = (num + 1) % 2;
+        self.curr_buffer.store(num, Ordering::Release);
     }
 }
 
@@ -54,16 +73,13 @@ fn main() {
         "Gameboy Emulator",
         eframe::NativeOptions::default(),
         Box::new(|cc| {
-            let cpu_buffer = RefCell::new([0; GAMEBOY_WIDTH * GAMEBOY_HEIGHT]);
-            let transit_buffer = Arc::new(TransitBuffer::default());
-            let render_buffer = RefCell::new([0; GAMEBOY_WIDTH * GAMEBOY_HEIGHT]);
+            let buffer = Arc::new(DoubleBuffer::default());
 
             // Spawn emulator thread
-            let emuthread_buffer_ref = Arc::clone(&transit_buffer);
+            let emuthread_buffer = Arc::clone(&buffer);
             let emuthread_egui_ctx = cc.egui_ctx.clone();
             std::thread::spawn(move || {
                 let egui_ctx = emuthread_egui_ctx;
-                let transit_buffer = emuthread_buffer_ref;
                 // let file = include_bytes!("../test.gb");
                 let file = include_bytes!("../hello-world.gb");
                 // let file = include_bytes!("../alu-test.gb");
@@ -90,15 +106,13 @@ fn main() {
                     }
                     ticks = 0;
 
-                    ppu.render(&memory_bus, &mut cpu_buffer.borrow_mut());
+                    let mut lock = emuthread_buffer.get_off().lock().unwrap();
+                    ppu.render(&memory_bus, &mut lock);
 
-                    if transit_buffer
-                        .is_ready
-                        .compare_exchange(false, true, Ordering::Relaxed, Ordering::Relaxed)
-                        .is_ok()
-                    {
-                        transit_buffer.rcell.lock().unwrap().swap(&cpu_buffer);
-                    }
+                    // Reduce contention by dropping this lock before swap
+                    // Contention can still happen if the render thread is rendering when we swap
+                    drop(lock);
+                    emuthread_buffer.swap();
 
                     egui_ctx.request_repaint();
                     debug!("Asked for repaint");
@@ -107,7 +121,7 @@ fn main() {
                 }
             });
 
-            Box::new(App::new(cc, transit_buffer, render_buffer))
+            Box::new(App::new(cc, buffer))
         }),
     );
 }
@@ -126,52 +140,53 @@ fn timer_periodic(ms: u64) -> Receiver<()> {
 
 #[allow(dead_code)]
 struct App {
-    transit_buffer: Arc<TransitBuffer>,
-    render_buffer: RefCell<ppu::FrameBuffer>,
+    buffer: Arc<DoubleBuffer>,
 }
 
 impl App {
-    pub fn new(
-        _cc: &eframe::CreationContext<'_>,
-        transit_buffer: Arc<TransitBuffer>,
-        render_buffer: RefCell<ppu::FrameBuffer>,
-    ) -> Self {
-        Self {
-            transit_buffer,
-            render_buffer,
-        }
+    pub fn new(_cc: &eframe::CreationContext<'_>, buffer: Arc<DoubleBuffer>) -> Self {
+        Self { buffer }
     }
 }
 
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        if self
-            .transit_buffer
-            .is_ready
-            .compare_exchange(true, false, Ordering::Relaxed, Ordering::Relaxed)
-            .is_ok()
-        {
-            self.transit_buffer
-                .rcell
-                .lock()
-                .unwrap()
-                .swap(&self.render_buffer);
-        }
-
         egui::CentralPanel::default().show(ctx, |ui| {
-            let painter = ui.painter();
-            for x in 0..160 {
-                for y in 0..140 {
-                    painter.rect_filled(
-                        Rect::from_two_pos(
-                            Pos2::new(x as f32 * SCALE, y as f32 * SCALE),
-                            Pos2::new(x as f32 * SCALE + SCALE, y as f32 * SCALE + SCALE),
-                        ),
-                        Rounding::none(),
-                        Color32::from_gray(self.render_buffer.borrow()[x + (y * GAMEBOY_WIDTH)]),
-                    )
+            let fb = self.buffer.get_current().lock().unwrap();
+
+            let mut color_vec = vec![];
+            for y in 0..GAMEBOY_HEIGHT {
+                for x in 0..GAMEBOY_WIDTH {
+                    let color = fb[x + (y * GAMEBOY_WIDTH)];
+                    color_vec.push(Color32::from_gray(color))
                 }
             }
+
+            drop(fb);
+
+            let image = ColorImage {
+                size: [GAMEBOY_WIDTH, GAMEBOY_HEIGHT],
+                pixels: color_vec,
+            };
+
+            let texture = ui.ctx().load_texture("auto", image);
+
+            ui.image(&texture, ui.max_rect().size());
+
+            // let lock = self.buffer.get_current().try_lock().unwrap();
+            // for x in 0..160 {
+            //     for y in 0..140 {
+            //         painter.rect_filled(
+            //             Rect::from_two_pos(
+            //                 Pos2::new(x as f32 * SCALE, y as f32 * SCALE),
+            //                 Pos2::new(x as f32 * SCALE + SCALE, y as f32 * SCALE + SCALE),
+            //             ),
+            //             Rounding::none(),
+            //             Color32::from_gray(lock[x + (y * GAMEBOY_WIDTH)]),
+            //         )
+            //     }
+            // }
+            // drop(lock);
         });
     }
 }
