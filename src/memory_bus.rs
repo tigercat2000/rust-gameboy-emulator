@@ -2,6 +2,12 @@ use std::{cell::RefCell, io::Read, sync::Mutex};
 
 use tracing::trace;
 
+pub const LCDC: u16 = 0xFF40;
+pub const SCROLL_Y: u16 = 0xFF42;
+pub const SCROLL_X: u16 = 0xFF43;
+pub const LCD_Y: u16 = 0xFF44;
+pub const PALLETE: u16 = 0xFF47;
+
 #[derive(Debug)]
 #[allow(clippy::upper_case_acronyms)]
 struct LCD {
@@ -9,12 +15,18 @@ struct LCD {
     pub lcd_control: u8,
     /// SCY
     pub scroll_y: u8,
+    /// SCX
+    pub scroll_x: u8,
     /// LY
     pub lcd_y: u8,
     /// LYC
     pub lcd_y_cmp: u8,
     /// BGP
     pub background_pallete: u8,
+    /// WY
+    pub window_y: u8,
+    /// WX
+    pub window_x: u8,
 }
 
 impl Default for LCD {
@@ -22,9 +34,12 @@ impl Default for LCD {
         Self {
             lcd_control: 0b1000_0000,
             scroll_y: 0,
+            scroll_x: 0,
             lcd_y: 0,
             lcd_y_cmp: 0,
             background_pallete: 0,
+            window_y: 0,
+            window_x: 0,
         }
     }
 }
@@ -75,11 +90,14 @@ impl MemoryBus {
                 };
 
                 match addr {
-                    0xFF40 => lcd.lcd_control,
-                    0xFF42 => lcd.scroll_y,
-                    0xFF44 => lcd.lcd_y,
+                    LCDC => lcd.lcd_control,
+                    SCROLL_Y => lcd.scroll_y,
+                    SCROLL_X => lcd.scroll_x,
+                    LCD_Y => lcd.lcd_y,
                     0xFF45 => lcd.lcd_y_cmp,
-                    0xFF47 => lcd.background_pallete,
+                    PALLETE => lcd.background_pallete,
+                    0xFF4A => lcd.window_y,
+                    0xFF4B => lcd.window_x,
                     _ => unimplemented!(),
                 }
             }
@@ -128,11 +146,14 @@ impl MemoryBus {
                     Err(_) => return,
                 };
                 match addr {
-                    0xFF40 => lcd.lcd_control = byte,
-                    0xFF42 => lcd.scroll_y = byte,
-                    0xFF44 => lcd.lcd_y = byte,
+                    LCDC => lcd.lcd_control = byte,
+                    SCROLL_Y => lcd.scroll_y = byte,
+                    SCROLL_X => lcd.scroll_x = byte,
+                    LCD_Y => lcd.lcd_y = byte,
                     0xFF45 => lcd.lcd_y_cmp = byte,
-                    0xFF47 => lcd.background_pallete = byte,
+                    PALLETE => lcd.background_pallete = byte,
+                    0xFF4A => lcd.window_y = byte,
+                    0xFF4B => lcd.window_x = byte,
                     _ => {}
                 }
             }

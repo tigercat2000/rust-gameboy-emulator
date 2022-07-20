@@ -457,6 +457,7 @@ impl Instruction {
         }
     }
 
+    /// Ticks in M-cycles (4 T-cycles)
     pub fn ticks(&self, action_taken: bool) -> u32 {
         match self {
             Instruction::Nop => 1,

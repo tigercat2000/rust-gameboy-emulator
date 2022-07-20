@@ -107,6 +107,7 @@ impl CPU {
         actual_instr
     }
 
+    /// Ticks in M-cycles (4 T-cycles)
     pub fn tick(&mut self, memory_bus: &MemoryBus) -> u32 {
         let old_pc = self.PC;
         let instr = self.next_instruction(memory_bus);

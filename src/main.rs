@@ -5,21 +5,18 @@ pub mod ppu;
 #[cfg(test)]
 pub mod unit_tests;
 
-use std::{
-    cell::RefCell,
-    sync::{
-        atomic::{AtomicBool, AtomicUsize, Ordering},
-        mpsc::Receiver,
-        Arc, Mutex,
-    },
+use std::sync::{
+    atomic::{AtomicUsize, Ordering},
+    mpsc::Receiver,
+    Arc, Mutex,
 };
 
 const GAMEBOY_WIDTH: usize = 160;
 const GAMEBOY_HEIGHT: usize = 144;
 
 use crate::{cpu::CPU, memory_bus::MemoryBus, ppu::PPU};
-use egui::{color, Color32, ColorImage, PaintCallback, Pos2, Rect, Rounding};
-use tracing::{debug, event, trace, warn, Level};
+use egui::{Color32, ColorImage};
+use tracing::{debug, event, Level};
 
 struct DoubleBuffer {
     buffers: [Mutex<ppu::FrameBuffer>; 2],
@@ -53,8 +50,6 @@ impl DoubleBuffer {
         self.curr_buffer.store(num, Ordering::Release);
     }
 }
-
-const SCALE: f32 = 3.0;
 
 fn main() {
     // let format = tracing_subscriber::fmt::format()
@@ -91,28 +86,25 @@ fn main() {
 
                 let memory_bus = MemoryBus::new(file.as_slice());
                 let mut cpu = CPU::default();
-                let mut ppu = PPU;
+                let mut ppu = PPU::default();
 
                 // Thanks to https://github.com/mvdnes/rboy/blob/c6630fa97e55a5595109a37c807038deb7a734fb/src/main.rs#L285
+                // 16ms period = 60fps
                 let periodic = timer_periodic(16);
-                let wait_ticks = 0x10000;
-                let mut ticks = 0;
 
                 loop {
-                    while ticks < wait_ticks {
-                        trace!("\n----------------\nTicks: {}/{}", ticks, wait_ticks);
-                        ticks += cpu.tick(&memory_bus);
-                        ppu.tick(&memory_bus);
-                    }
-                    ticks = 0;
-
                     let mut lock = emuthread_buffer.get_off().lock().unwrap();
-                    ppu.render(&memory_bus, &mut lock);
+                    while !ppu.updated {
+                        let ticks = cpu.tick(&memory_bus);
+                        ppu.tick(&memory_bus, &mut *lock, ticks * 4);
+                    }
+                    ppu.updated = false;
 
                     // Reduce contention by dropping this lock before swap
                     // Contention can still happen if the render thread is rendering when we swap
                     drop(lock);
                     emuthread_buffer.swap();
+                    // ppu.render(&memory_bus, &mut lock);
 
                     egui_ctx.request_repaint();
                     debug!("Asked for repaint");
