@@ -1,12 +1,12 @@
 use bit_field::BitField;
-use tracing::{debug, trace};
+use tracing::{debug, trace, warn};
 
 use crate::emulator::{
     instructions::{Instruction, Register16, Register8},
     memory_bus::MemoryBus,
 };
 
-use super::CPU;
+use super::{Flag, ALU, CPU};
 
 pub fn handle_instruction(
     cpu: &mut CPU,
@@ -132,6 +132,25 @@ pub fn handle_instruction(
         Instruction::LoadSPHL => {
             debug!("Put {:#X} into SP", cpu.get_hl());
             cpu.SP = cpu.get_hl();
+        }
+        Instruction::LoadHLSP(offset) => {
+            let offset = offset as i16 as u16;
+            let new_value = cpu.SP.wrapping_add(offset);
+            cpu.H = new_value.get_bits(8..16) as u8;
+            cpu.L = new_value.get_bits(0..8) as u8;
+            cpu.set_flag(Flag::Z, false);
+            cpu.set_flag(Flag::N, false);
+            cpu.set_flag(Flag::H, ALU::test_add_carry_bit(3, cpu.SP, offset));
+            cpu.set_flag(Flag::C, ALU::test_add_carry_bit(7, cpu.SP, offset));
+        }
+        Instruction::AddSp(offset) => {
+            let offset = offset as i16 as u16;
+            let new_value = cpu.SP.wrapping_add(offset);
+            cpu.set_flag(Flag::Z, false);
+            cpu.set_flag(Flag::N, false);
+            cpu.set_flag(Flag::H, ALU::test_add_carry_bit(3, cpu.SP, offset));
+            cpu.set_flag(Flag::C, ALU::test_add_carry_bit(7, cpu.SP, offset));
+            cpu.SP = new_value;
         }
         _ => return None,
     }

@@ -513,4 +513,10 @@ impl ALU {
             addr.wrapping_add(rel as u16)
         }
     }
+
+    pub fn test_add_carry_bit(bit: usize, a: u16, b: u16) -> bool {
+        let mut mask: u16 = 1 << bit;
+        mask |= mask.wrapping_sub(1u16);
+        (a & mask) + (b & mask) > mask
+    }
 }
