@@ -73,7 +73,7 @@ impl CPU {
         };
 
         if self.halted {
-            warn!("Pausing due to HALT");
+            trace!("Pausing due to HALT");
             return 1;
         }
 
@@ -281,8 +281,8 @@ impl CPU {
             None => return 0,
         };
 
-        warn!(
-            "Unsetting halted because interrupt {:#?} was found",
+        debug!(
+            "Un-halting because interrupt {:#?} was found",
             next_interrupt
         );
         self.halted = false;

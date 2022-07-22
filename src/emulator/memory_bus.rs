@@ -140,7 +140,7 @@ impl Interrupts {
 pub struct MemoryBus {
     program: Vec<u8>,
     /// HACK: TODO: Remove when doing MBC
-    fake_cartram: [u8; 0xBFFF - 0xA000 + 1],
+    // fake_cartram: [u8; 0xBFFF - 0xA000 + 1],
     wram1: [u8; 0xCFFF - 0xC000 + 1],
     wram2: [u8; 0xDFFF - 0xD000 + 1],
     vram: [u8; 0x1FFF + 1],
@@ -157,7 +157,7 @@ impl MemoryBus {
         reader.read_to_end(&mut vec).unwrap();
         Self {
             program: vec,
-            fake_cartram: [0; 0xBFFF - 0xA000 + 1],
+            // fake_cartram: [0; 0xBFFF - 0xA000 + 1],
             wram1: [0; 0xCFFF - 0xC000 + 1],
             wram2: [0; 0xDFFF - 0xD000 + 1],
             vram: [0; 0x1FFF + 1],
@@ -177,7 +177,7 @@ impl MemoryBus {
             }
             0x8000..=0x9FFF => self.vram[addr as usize - 0x8000],
             // TODO: Remove when MBC
-            0xA000..=0xBFFF => self.fake_cartram[addr as usize - 0xA000],
+            // 0xA000..=0xBFFF => self.fake_cartram[addr as usize - 0xA000],
             // WRAM 1
             0xC000..=0xCFFF => {
                 let val = self.wram1[addr as usize - 0xC000];
@@ -205,6 +205,8 @@ impl MemoryBus {
                 trace!("OAM read @{:#X}: {:#X}", addr, val);
                 val
             }
+            // Joypad
+            0xFF00 => 0b0011_1111,
             0xFF40..=0xFF4B => {
                 trace!("LCD register read @{:#X}", addr);
                 match addr {
@@ -231,7 +233,7 @@ impl MemoryBus {
                 trace!("IE read @{:#X}: {:#X}", addr, val);
                 val
             }
-            0xFF00..=0xFF7F => {
+            0xFF01..=0xFF7F => {
                 warn!("Unimplemented IO register read @{:#X}", addr);
                 0x00
             }
@@ -272,7 +274,7 @@ impl MemoryBus {
                 self.vram[addr as usize - 0x8000] = byte
             }
             // TODO: Remove when MBC
-            0xA000..=0xBFFF => self.fake_cartram[addr as usize - 0xA000] = byte,
+            // 0xA000..=0xBFFF => self.fake_cartram[addr as usize - 0xA000] = byte,
             // WRAM 1
             0xC000..=0xCFFF => {
                 trace!("WRAM write @{:#X}: {:#X}", addr, byte);
@@ -303,6 +305,10 @@ impl MemoryBus {
                     "(continuing) Illegal write to prohibited zone @{:#X}: {:#X}",
                     addr, byte
                 );
+            }
+            // Joypad
+            0xFF00 => {
+                // Do nothing
             }
             // Serial
             0xFF01 => {
@@ -347,7 +353,7 @@ impl MemoryBus {
                 self.interrupts.set_interrupt_enable(byte);
             }
             // I/O registers
-            0xFF00..=0xFF7F => {
+            0xFF03..=0xFF7F => {
                 warn!("Unimplemented IO register write @{:#X}: {:#X}", addr, byte);
             }
             // High Ram
