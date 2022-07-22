@@ -11,7 +11,7 @@ use super::{Flag, CPU};
 pub fn handle_instruction(
     cpu: &mut CPU,
     instr: Instruction,
-    memory_bus: &MemoryBus,
+    memory_bus: &mut MemoryBus,
 ) -> Option<u32> {
     match instr {
         // 8 bit ALU operations
@@ -259,7 +259,7 @@ impl ALU {
         cpu: &mut CPU,
         op: BitwiseOp,
         register: Register8,
-        memory_bus: &MemoryBus,
+        memory_bus: &mut MemoryBus,
     ) {
         let value = cpu.read_register(register, memory_bus);
         let result = match op {

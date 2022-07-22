@@ -11,7 +11,7 @@ use super::{Flag, ALU, CPU};
 pub fn handle_instruction(
     cpu: &mut CPU,
     instr: Instruction,
-    memory_bus: &MemoryBus,
+    memory_bus: &mut MemoryBus,
 ) -> Option<u32> {
     match instr {
         // 8-bit loads

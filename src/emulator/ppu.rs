@@ -21,7 +21,7 @@ pub struct PPU {
 
 impl PPU {
     /// Ticks in T-cycles
-    pub fn tick(&mut self, memory_bus: &MemoryBus, frame_buffer: &mut FrameBuffer, ticks: u32) {
+    pub fn tick(&mut self, memory_bus: &mut MemoryBus, frame_buffer: &mut FrameBuffer, ticks: u32) {
         let lcd_control = memory_bus.read_u8(LCDC);
         if !lcd_control.get_bit(7) {
             trace!("LCD control disabled, skipping tick: {:#X}", lcd_control);
@@ -61,7 +61,7 @@ impl PPU {
     fn change_mode_if_necessary(
         &mut self,
         mode: u8,
-        memory_bus: &MemoryBus,
+        memory_bus: &mut MemoryBus,
         frame_buffer: &mut FrameBuffer,
     ) {
         if self.mode != mode {
@@ -69,7 +69,12 @@ impl PPU {
         }
     }
 
-    fn change_mode(&mut self, mode: u8, memory_bus: &MemoryBus, frame_buffer: &mut FrameBuffer) {
+    fn change_mode(
+        &mut self,
+        mode: u8,
+        memory_bus: &mut MemoryBus,
+        frame_buffer: &mut FrameBuffer,
+    ) {
         self.mode = mode;
 
         match self.mode {

@@ -67,7 +67,7 @@ impl Default for CPU {
 
 impl CPU {
     /// Ticks in M-cycles (4 T-cycles)
-    pub fn tick(&mut self, memory_bus: &MemoryBus) -> u32 {
+    pub fn tick(&mut self, memory_bus: &mut MemoryBus) -> u32 {
         let old_pc = self.PC;
         let instr = self.next_instruction(memory_bus);
         debug!("Executing instruction {} at {:#X}", instr, old_pc);
@@ -232,7 +232,7 @@ impl CPU {
         }
     }
 
-    fn write_register(&mut self, target: Register8, source: Register8, memory_bus: &MemoryBus) {
+    fn write_register(&mut self, target: Register8, source: Register8, memory_bus: &mut MemoryBus) {
         let read = self.read_register(source, memory_bus);
         trace!("Writing {:?} -> {:?}", source, target);
         self.write_register_immediate(target, read, memory_bus);
@@ -242,7 +242,7 @@ impl CPU {
         &mut self,
         target: Register8,
         immediate: u8,
-        memory_bus: &MemoryBus,
+        memory_bus: &mut MemoryBus,
     ) {
         trace!("Writing {:#X} -> {:?}", immediate, target);
         match target {
@@ -270,7 +270,7 @@ impl CPU {
         }
     }
 
-    fn handle_interrupt(&mut self, memory_bus: &MemoryBus) -> u8 {
+    fn handle_interrupt(&mut self, memory_bus: &mut MemoryBus) -> u8 {
         if !self.IME && !self.halted {
             return 0;
         }

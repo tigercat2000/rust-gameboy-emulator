@@ -1,4 +1,4 @@
-use std::{cell::RefCell, io::Read, sync::Mutex};
+use std::io::Read;
 
 use bit_field::BitField;
 use tracing::{error, trace, warn};
@@ -139,14 +139,14 @@ impl Interrupts {
 #[derive(Debug)]
 pub struct MemoryBus {
     program: Vec<u8>,
-    wram1: Mutex<RefCell<[u8; 0xCFFF - 0xC000 + 1]>>,
-    wram2: Mutex<RefCell<[u8; 0xDFFF - 0xD000 + 1]>>,
-    vram: Mutex<RefCell<[u8; 0x1FFF + 1]>>,
-    oam: Mutex<RefCell<[u8; 0xFE9F - 0xFE00 + 1]>>,
-    hram: Mutex<RefCell<[u8; 0xFFFE - 0xFF80 + 1]>>,
-    lcd: Mutex<RefCell<LCD>>,
-    interrupts: Mutex<RefCell<Interrupts>>,
-    console_buffer: Mutex<RefCell<String>>,
+    wram1: [u8; 0xCFFF - 0xC000 + 1],
+    wram2: [u8; 0xDFFF - 0xD000 + 1],
+    vram: [u8; 0x1FFF + 1],
+    oam: [u8; 0xFE9F - 0xFE00 + 1],
+    hram: [u8; 0xFFFE - 0xFF80 + 1],
+    lcd: LCD,
+    interrupts: Interrupts,
+    console_buffer: String,
 }
 
 impl MemoryBus {
@@ -155,14 +155,14 @@ impl MemoryBus {
         reader.read_to_end(&mut vec).unwrap();
         Self {
             program: vec,
-            wram1: Mutex::new(RefCell::new([0; 0xCFFF - 0xC000 + 1])),
-            wram2: Mutex::new(RefCell::new([0; 0xDFFF - 0xD000 + 1])),
-            vram: Mutex::new(RefCell::new([0; 0x1FFF + 1])),
-            oam: Mutex::new(RefCell::new([0; 0xFE9F - 0xFE00 + 1])),
-            hram: Mutex::new(RefCell::new([0; 0xFFFE - 0xFF80 + 1])),
-            lcd: Mutex::new(RefCell::new(LCD::default())),
-            interrupts: Mutex::new(RefCell::new(Interrupts::default())),
-            console_buffer: Mutex::new(RefCell::new(String::new())),
+            wram1: [0; 0xCFFF - 0xC000 + 1],
+            wram2: [0; 0xDFFF - 0xD000 + 1],
+            vram: [0; 0x1FFF + 1],
+            oam: [0; 0xFE9F - 0xFE00 + 1],
+            hram: [0; 0xFFFE - 0xFF80 + 1],
+            lcd: LCD::default(),
+            interrupts: Interrupts::default(),
+            console_buffer: String::new(),
         }
     }
 
@@ -172,39 +172,16 @@ impl MemoryBus {
                 trace!("PROG read @{:#X}", addr);
                 self.program[addr as usize]
             }
-            0x8000..=0x9FFF => {
-                let vram_guard = self.vram.try_lock();
-                match vram_guard {
-                    Ok(vram) => match vram.try_borrow() {
-                        Ok(vram) => vram[addr as usize - 0x8000],
-                        Err(_) => 0xFF,
-                    },
-                    Err(_) => 0xFF,
-                }
-            }
+            0x8000..=0x9FFF => self.vram[addr as usize - 0x8000],
             // WRAM 1
             0xC000..=0xCFFF => {
-                let wram_guard = self.wram1.try_lock();
-                let val = match wram_guard {
-                    Ok(wram) => match wram.try_borrow() {
-                        Ok(wram) => wram[addr as usize - 0xC000],
-                        Err(_) => 0xFF,
-                    },
-                    Err(_) => 0xFF,
-                };
+                let val = self.wram1[addr as usize - 0xC000];
                 trace!("WRAM read @{:#X}: {:#X}", addr, val);
                 val
             }
-            // WRAM 1
+            // WRAM 2
             0xD000..=0xDFFF => {
-                let wram_guard = self.wram2.try_lock();
-                let val = match wram_guard {
-                    Ok(wram) => match wram.try_borrow() {
-                        Ok(wram) => wram[addr as usize - 0xD000],
-                        Err(_) => 0xFF,
-                    },
-                    Err(_) => 0xFF,
-                };
+                let val = self.wram2[addr as usize - 0xD000];
                 trace!("WRAM read @{:#X}: {:#X}", addr, val);
                 val
             }
@@ -219,63 +196,33 @@ impl MemoryBus {
             }
             // OAM
             0xFE00..=0xFE9F => {
-                let oam_guard = self.oam.try_lock();
-                let val = match oam_guard {
-                    Ok(oam) => match oam.try_borrow() {
-                        Ok(oam) => oam[addr as usize - 0xFE00],
-                        Err(_) => 0xFF,
-                    },
-                    Err(_) => 0xFF,
-                };
+                let val = self.oam[addr as usize - 0xFE00];
                 trace!("OAM read @{:#X}: {:#X}", addr, val);
                 val
             }
             0xFF40..=0xFF4B => {
                 trace!("LCD register read @{:#X}", addr);
-                let lcd_guard = match self.lcd.try_lock() {
-                    Ok(lcd_guard) => lcd_guard,
-                    Err(_) => return 0xFF,
-                };
-                let lcd = match lcd_guard.try_borrow() {
-                    Ok(lcd) => lcd,
-                    Err(_) => return 0xFF,
-                };
-
                 match addr {
-                    LCDC => lcd.lcd_control,
-                    SCROLL_Y => lcd.scroll_y,
-                    SCROLL_X => lcd.scroll_x,
-                    LCD_Y => lcd.lcd_y,
-                    0xFF45 => lcd.lcd_y_cmp,
-                    PALLETE => lcd.background_pallete,
-                    0xFF4A => lcd.window_y,
-                    0xFF4B => lcd.window_x,
+                    LCDC => self.lcd.lcd_control,
+                    SCROLL_Y => self.lcd.scroll_y,
+                    SCROLL_X => self.lcd.scroll_x,
+                    LCD_Y => self.lcd.lcd_y,
+                    0xFF45 => self.lcd.lcd_y_cmp,
+                    PALLETE => self.lcd.background_pallete,
+                    0xFF4A => self.lcd.window_y,
+                    0xFF4B => self.lcd.window_x,
                     _ => unimplemented!(),
                 }
             }
             // Interrupt Flag (IF)
             IF => {
-                let interrupts_guard = self.interrupts.try_lock();
-                let val = match interrupts_guard {
-                    Ok(interrupts) => match interrupts.try_borrow() {
-                        Ok(interrupts) => interrupts.get_interrupt_flag(),
-                        Err(_) => return 0x00,
-                    },
-                    Err(_) => return 0x00,
-                };
+                let val = self.interrupts.get_interrupt_flag();
                 trace!("IF read @{:#X}: {:#X}", addr, val);
                 val
             }
             // Interrupt Enable (IE)
             IE => {
-                let interrupts_guard = self.interrupts.try_lock();
-                let val = match interrupts_guard {
-                    Ok(interrupts) => match interrupts.try_borrow() {
-                        Ok(interrupts) => interrupts.get_interrupt_enable(),
-                        Err(_) => return 0x00,
-                    },
-                    Err(_) => return 0x00,
-                };
+                let val = self.interrupts.get_interrupt_enable();
                 trace!("IE read @{:#X}: {:#X}", addr, val);
                 val
             }
@@ -284,14 +231,7 @@ impl MemoryBus {
                 0x00
             }
             0xFF80..=0xFFFE => {
-                let hram_guard = self.hram.try_lock();
-                let val = match hram_guard {
-                    Ok(hram) => match hram.try_borrow() {
-                        Ok(hram) => hram[addr as usize - 0xFF80],
-                        Err(_) => 0xFF,
-                    },
-                    Err(_) => 0xFF,
-                };
+                let val = self.hram[addr as usize - 0xFF80];
                 trace!("HRAM read @{:#X}: {:#X}", addr, val);
                 val
             }
@@ -312,7 +252,7 @@ impl MemoryBus {
         ]
     }
 
-    pub fn write_u8(&self, addr: u16, byte: u8) {
+    pub fn write_u8(&mut self, addr: u16, byte: u8) {
         match addr {
             0x0000..=0x7FFF => {
                 warn!(
@@ -324,41 +264,17 @@ impl MemoryBus {
             // VRAM!
             0x8000..=0x9FFF => {
                 trace!("VRAM write @{:#X}: {:#X} '{}'", addr, byte, byte as char);
-                let vram_guard = match self.vram.try_lock() {
-                    Ok(vram_guard) => vram_guard,
-                    Err(_) => return,
-                };
-                let mut vram = match vram_guard.try_borrow_mut() {
-                    Ok(vram) => vram,
-                    Err(_) => return,
-                };
-                vram[addr as usize - 0x8000] = byte
+                self.vram[addr as usize - 0x8000] = byte
             }
             // WRAM 1
             0xC000..=0xCFFF => {
                 trace!("WRAM write @{:#X}: {:#X}", addr, byte);
-                let wram_guard = match self.wram1.try_lock() {
-                    Ok(wram_guard) => wram_guard,
-                    Err(_) => return,
-                };
-                let mut wram = match wram_guard.try_borrow_mut() {
-                    Ok(wram) => wram,
-                    Err(_) => return,
-                };
-                wram[addr as usize - 0xC000] = byte
+                self.wram1[addr as usize - 0xC000] = byte
             }
             // WRAM 2
             0xD000..=0xDFFF => {
                 trace!("WRAM write @{:#X}: {:#X}", addr, byte);
-                let wram_guard = match self.wram2.try_lock() {
-                    Ok(wram_guard) => wram_guard,
-                    Err(_) => return,
-                };
-                let mut wram = match wram_guard.try_borrow_mut() {
-                    Ok(wram) => wram,
-                    Err(_) => return,
-                };
-                wram[addr as usize - 0xD000] = byte
+                self.wram2[addr as usize - 0xD000] = byte
             }
             // ECHO RAM
             0xE000..=0xFDFF => {
@@ -373,15 +289,7 @@ impl MemoryBus {
             // OAM
             0xFE00..=0xFE9F => {
                 trace!("OAM write @{:#X}: {:#X}", addr, byte);
-                let oam_guard = match self.oam.try_lock() {
-                    Ok(oam_guard) => oam_guard,
-                    Err(_) => return,
-                };
-                let mut oam = match oam_guard.try_borrow_mut() {
-                    Ok(oam) => oam,
-                    Err(_) => return,
-                };
-                oam[addr as usize - 0xFE00] = byte
+                self.oam[addr as usize - 0xFE00] = byte
             }
             0xFEA0..=0xFEFF => {
                 warn!(
@@ -392,68 +300,40 @@ impl MemoryBus {
             // LCD
             0xFF40..=0xFF4B => {
                 trace!("LCD register write @{:#X}: {:#X}", addr, byte);
-                let lcd_guard = match self.lcd.try_lock() {
-                    Ok(lcd_guard) => lcd_guard,
-                    Err(_) => return,
-                };
-                let mut lcd = match lcd_guard.try_borrow_mut() {
-                    Ok(lcd) => lcd,
-                    Err(_) => return,
-                };
                 match addr {
                     LCDC => {
-                        lcd.lcd_control = byte;
-                        if !lcd.lcd_control.get_bit(7) {
-                            lcd.lcd_y = 0;
+                        self.lcd.lcd_control = byte;
+                        if !self.lcd.lcd_control.get_bit(7) {
+                            self.lcd.lcd_y = 0;
                         }
                     }
-                    SCROLL_Y => lcd.scroll_y = byte,
-                    SCROLL_X => lcd.scroll_x = byte,
-                    LCD_Y => lcd.lcd_y = byte,
-                    0xFF45 => lcd.lcd_y_cmp = byte,
-                    PALLETE => lcd.background_pallete = byte,
-                    0xFF4A => lcd.window_y = byte,
-                    0xFF4B => lcd.window_x = byte,
+                    SCROLL_Y => self.lcd.scroll_y = byte,
+                    SCROLL_X => self.lcd.scroll_x = byte,
+                    LCD_Y => self.lcd.lcd_y = byte,
+                    0xFF45 => self.lcd.lcd_y_cmp = byte,
+                    PALLETE => self.lcd.background_pallete = byte,
+                    0xFF4A => self.lcd.window_y = byte,
+                    0xFF4B => self.lcd.window_x = byte,
                     _ => {}
                 }
             }
             // Interrupt Flag (IF)
             0xFF0F => {
                 trace!("IF register write @{:#X}: {:#X}", addr, byte);
-                let interrupts_guard = match self.interrupts.try_lock() {
-                    Ok(interrupts_guard) => interrupts_guard,
-                    Err(_) => return,
-                };
-                let mut interrupts = match interrupts_guard.try_borrow_mut() {
-                    Ok(interrupts) => interrupts,
-                    Err(_) => return,
-                };
-
-                interrupts.set_interrupt_flag(byte);
+                self.interrupts.set_interrupt_flag(byte);
             }
             // Interrupt Enable (IE)
             0xFFFF => {
                 trace!("IE register write @{:#X}: {:#X}", addr, byte);
-                let interrupts_guard = match self.interrupts.try_lock() {
-                    Ok(interrupts_guard) => interrupts_guard,
-                    Err(_) => return,
-                };
-                let mut interrupts = match interrupts_guard.try_borrow_mut() {
-                    Ok(interrupts) => interrupts,
-                    Err(_) => return,
-                };
-
-                interrupts.set_interrupt_enable(byte);
+                self.interrupts.set_interrupt_enable(byte);
             }
             0xFF01 => {
-                let console_guard = self.console_buffer.lock().unwrap();
-                let mut console_buffer = console_guard.borrow_mut();
                 let byte = byte as char;
                 if byte == '\n' {
-                    println!("{}", console_buffer);
-                    console_buffer.clear();
+                    println!("{}", self.console_buffer);
+                    self.console_buffer.clear();
                 } else {
-                    console_buffer.push(byte);
+                    self.console_buffer.push(byte);
                 }
             }
             0xFF02 => {}
@@ -464,15 +344,7 @@ impl MemoryBus {
             // High Ram
             0xFF80..=0xFFFE => {
                 trace!("HRAM write @{:#X}: {:#X}", addr, byte);
-                let hram_guard = match self.hram.try_lock() {
-                    Ok(hram_guard) => hram_guard,
-                    Err(_) => return,
-                };
-                let mut hram = match hram_guard.try_borrow_mut() {
-                    Ok(hram) => hram,
-                    Err(_) => return,
-                };
-                hram[addr as usize - 0xFF80] = byte
+                self.hram[addr as usize - 0xFF80] = byte
             }
             _ => panic!("Illegal memory write at {:#X}", addr),
         }
@@ -491,77 +363,50 @@ impl MemoryBus {
         val
     }
 
-    pub fn write_stack_16(&self, sp: &mut u16, word: u16) {
+    pub fn write_stack_16(&mut self, sp: &mut u16, word: u16) {
         self.write_stack(sp, word.get_bits(8..16) as u8);
         self.write_stack(sp, word.get_bits(0..8) as u8);
     }
 
-    pub fn write_stack(&self, sp: &mut u16, byte: u8) {
+    pub fn write_stack(&mut self, sp: &mut u16, byte: u8) {
         *sp = sp.wrapping_sub(1);
         self.write_u8(*sp, byte);
     }
 
-    pub fn request_interrupt(&self, interrupt: Interrupt) {
-        let interrupts_guard = match self.interrupts.try_lock() {
-            Ok(interrupts_guard) => interrupts_guard,
-            Err(_) => return,
-        };
-        let mut interrupts = match interrupts_guard.try_borrow_mut() {
-            Ok(interrupts) => interrupts,
-            Err(_) => return,
-        };
-
+    pub fn request_interrupt(&mut self, interrupt: Interrupt) {
         match interrupt {
-            Interrupt::VBlank => interrupts.vblank_requested = true,
-            Interrupt::LCDStat => interrupts.lcd_stat_requested = true,
-            Interrupt::Timer => interrupts.timer_requested = true,
-            Interrupt::Serial => interrupts.serial_requested = true,
-            Interrupt::Joypad => interrupts.joypad_requested = true,
+            Interrupt::VBlank => self.interrupts.vblank_requested = true,
+            Interrupt::LCDStat => self.interrupts.lcd_stat_requested = true,
+            Interrupt::Timer => self.interrupts.timer_requested = true,
+            Interrupt::Serial => self.interrupts.serial_requested = true,
+            Interrupt::Joypad => self.interrupts.joypad_requested = true,
         }
     }
 
-    pub fn reset_interrupt(&self, interrupt: Interrupt) {
-        let interrupts_guard = match self.interrupts.try_lock() {
-            Ok(interrupts_guard) => interrupts_guard,
-            Err(_) => return,
-        };
-        let mut interrupts = match interrupts_guard.try_borrow_mut() {
-            Ok(interrupts) => interrupts,
-            Err(_) => return,
-        };
-
+    pub fn reset_interrupt(&mut self, interrupt: Interrupt) {
         match interrupt {
-            Interrupt::VBlank => interrupts.vblank_requested = false,
-            Interrupt::LCDStat => interrupts.lcd_stat_requested = false,
-            Interrupt::Timer => interrupts.timer_requested = false,
-            Interrupt::Serial => interrupts.serial_requested = false,
-            Interrupt::Joypad => interrupts.joypad_requested = false,
+            Interrupt::VBlank => self.interrupts.vblank_requested = false,
+            Interrupt::LCDStat => self.interrupts.lcd_stat_requested = false,
+            Interrupt::Timer => self.interrupts.timer_requested = false,
+            Interrupt::Serial => self.interrupts.serial_requested = false,
+            Interrupt::Joypad => self.interrupts.joypad_requested = false,
         }
     }
 
     pub fn get_highest_priority_interrupt(&self) -> Option<Interrupt> {
-        let interrupts_guard = match self.interrupts.try_lock() {
-            Ok(interrupts_guard) => interrupts_guard,
-            Err(_) => return None,
-        };
-        let interrupts = match interrupts_guard.try_borrow() {
-            Ok(interrupts) => interrupts,
-            Err(_) => return None,
-        };
-
-        if interrupts.vblank_requested {
+        if self.interrupts.vblank_requested {
             return Some(Interrupt::VBlank);
         }
-        if interrupts.lcd_stat_requested {
+        if self.interrupts.lcd_stat_requested {
             return Some(Interrupt::LCDStat);
         }
-        if interrupts.timer_requested {
+        if self.interrupts.timer_requested {
             return Some(Interrupt::Timer);
         }
-        if interrupts.serial_requested {
+        if self.interrupts.serial_requested {
             return Some(Interrupt::Serial);
         }
-        if interrupts.joypad_requested {
+        if self.interrupts.joypad_requested {
             return Some(Interrupt::Joypad);
         }
         None
