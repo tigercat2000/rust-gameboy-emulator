@@ -47,6 +47,7 @@ impl Default for LCD {
     }
 }
 
+#[derive(Clone, Copy)]
 pub enum Interrupt {
     /// INT 40
     VBlank,
@@ -58,6 +59,18 @@ pub enum Interrupt {
     Serial,
     /// INT 60
     Joypad,
+}
+
+impl Interrupt {
+    pub fn addr(&self) -> u16 {
+        match self {
+            Interrupt::VBlank => 0x0040,
+            Interrupt::LCDStat => 0x0048,
+            Interrupt::Timer => 0x0050,
+            Interrupt::Serial => 0x0058,
+            Interrupt::Joypad => 0x0060,
+        }
+    }
 }
 
 #[derive(Debug, Default)]
@@ -486,6 +499,53 @@ impl MemoryBus {
             Interrupt::Serial => interrupts.serial_requested = true,
             Interrupt::Joypad => interrupts.joypad_requested = true,
         }
+    }
+
+    pub fn reset_interrupt(&self, interrupt: Interrupt) {
+        let interrupts_guard = match self.interrupts.try_lock() {
+            Ok(interrupts_guard) => interrupts_guard,
+            Err(_) => return,
+        };
+        let mut interrupts = match interrupts_guard.try_borrow_mut() {
+            Ok(interrupts) => interrupts,
+            Err(_) => return,
+        };
+
+        match interrupt {
+            Interrupt::VBlank => interrupts.vblank_requested = false,
+            Interrupt::LCDStat => interrupts.lcd_stat_requested = false,
+            Interrupt::Timer => interrupts.timer_requested = false,
+            Interrupt::Serial => interrupts.serial_requested = false,
+            Interrupt::Joypad => interrupts.joypad_requested = false,
+        }
+    }
+
+    pub fn get_highest_priority_interrupt(&self) -> Option<Interrupt> {
+        let interrupts_guard = match self.interrupts.try_lock() {
+            Ok(interrupts_guard) => interrupts_guard,
+            Err(_) => return None,
+        };
+        let interrupts = match interrupts_guard.try_borrow() {
+            Ok(interrupts) => interrupts,
+            Err(_) => return None,
+        };
+
+        if interrupts.vblank_requested {
+            return Some(Interrupt::VBlank);
+        }
+        if interrupts.lcd_stat_requested {
+            return Some(Interrupt::LCDStat);
+        }
+        if interrupts.timer_requested {
+            return Some(Interrupt::Timer);
+        }
+        if interrupts.serial_requested {
+            return Some(Interrupt::Serial);
+        }
+        if interrupts.joypad_requested {
+            return Some(Interrupt::Joypad);
+        }
+        None
     }
 
     pub fn hram_dump(&self) {

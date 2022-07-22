@@ -275,7 +275,7 @@ impl CPU {
             return 0;
         }
 
-        let mut interrupts_requested = memory_bus.read_u8(IF);
+        let interrupts_requested = memory_bus.read_u8(IF);
         let triggered = interrupts_requested & memory_bus.read_u8(IE);
         if triggered == 0 {
             return 0;
@@ -287,16 +287,12 @@ impl CPU {
         }
         self.IME = false;
 
-        let n = triggered.trailing_zeros();
-        if n >= 5 {
-            unreachable!("Invalid interrupt triggered")
+        let next_interrupt = memory_bus.get_highest_priority_interrupt();
+        if let Some(interrupt) = next_interrupt {
+            memory_bus.reset_interrupt(interrupt);
+            memory_bus.write_stack_16(&mut self.SP, self.PC);
+            self.PC = interrupt.addr();
         }
-
-        interrupts_requested.set_bit(n as usize, false);
-        memory_bus.write_u8(IF, interrupts_requested);
-
-        memory_bus.write_stack_16(&mut self.SP, self.PC);
-        self.PC = 0x0040 | (n as u16) << 3;
 
         4
     }
