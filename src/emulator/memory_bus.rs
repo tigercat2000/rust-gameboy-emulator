@@ -393,20 +393,20 @@ impl MemoryBus {
         }
     }
 
-    pub fn get_highest_priority_interrupt(&self) -> Option<Interrupt> {
-        if self.interrupts.vblank_requested {
+    pub fn get_next_interrupt(&self) -> Option<Interrupt> {
+        if self.interrupts.vblank_requested && self.interrupts.vblank_enabled {
             return Some(Interrupt::VBlank);
         }
-        if self.interrupts.lcd_stat_requested {
+        if self.interrupts.lcd_stat_requested && self.interrupts.lcd_stat_enabled {
             return Some(Interrupt::LCDStat);
         }
-        if self.interrupts.timer_requested {
+        if self.interrupts.timer_requested && self.interrupts.timer_enabled {
             return Some(Interrupt::Timer);
         }
-        if self.interrupts.serial_requested {
+        if self.interrupts.serial_requested && self.interrupts.serial_enabled {
             return Some(Interrupt::Serial);
         }
-        if self.interrupts.joypad_requested {
+        if self.interrupts.joypad_requested && self.interrupts.joypad_enabled {
             return Some(Interrupt::Joypad);
         }
         None

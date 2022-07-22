@@ -7,8 +7,6 @@ use crate::emulator::{
     memory_bus::MemoryBus,
 };
 
-use super::memory_bus::{IE, IF};
-
 pub mod alu;
 pub use alu::ALU;
 pub mod control_flow;
@@ -275,11 +273,10 @@ impl CPU {
             return 0;
         }
 
-        let interrupts_requested = memory_bus.read_u8(IF);
-        let triggered = interrupts_requested & memory_bus.read_u8(IE);
-        if triggered == 0 {
-            return 0;
-        }
+        let next_interrupt = match memory_bus.get_next_interrupt() {
+            Some(interrupt) => interrupt,
+            None => return 0,
+        };
 
         self.halted = false;
         if !self.IME {
@@ -287,12 +284,9 @@ impl CPU {
         }
         self.IME = false;
 
-        let next_interrupt = memory_bus.get_highest_priority_interrupt();
-        if let Some(interrupt) = next_interrupt {
-            memory_bus.reset_interrupt(interrupt);
-            memory_bus.write_stack_16(&mut self.SP, self.PC);
-            self.PC = interrupt.addr();
-        }
+        memory_bus.reset_interrupt(next_interrupt);
+        memory_bus.write_stack_16(&mut self.SP, self.PC);
+        self.PC = next_interrupt.addr();
 
         4
     }
