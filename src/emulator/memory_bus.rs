@@ -153,19 +153,19 @@ impl MemoryBus {
         }
     }
 
-    pub fn get_stack_16(&self, sp: &mut u16) -> u16 {
-        let upper = self.get_stack(sp) as u16;
-        let lower = self.get_stack(sp) as u16;
+    pub fn read_stack_16(&self, sp: &mut u16) -> u16 {
+        let upper = self.read_stack(sp) as u16;
+        let lower = self.read_stack(sp) as u16;
         upper << 8 | lower
     }
 
-    pub fn get_stack(&self, sp: &mut u16) -> u8 {
-        let val = self.get_u8(*sp);
+    pub fn read_stack(&self, sp: &mut u16) -> u8 {
+        let val = self.read_u8(*sp);
         *sp = sp.wrapping_add(1);
         val
     }
 
-    pub fn get_u8(&self, addr: u16) -> u8 {
+    pub fn read_u8(&self, addr: u16) -> u8 {
         match addr {
             0x0000..=0x7FFF => {
                 trace!("PROG read @{:#X}", addr);
@@ -295,10 +295,10 @@ impl MemoryBus {
     #[allow(clippy::identity_op)]
     pub fn get_instr(&self, addr: u16) -> [u8; 4] {
         [
-            self.get_u8(addr + 0),
-            self.get_u8(addr + 1),
-            self.get_u8(addr + 2),
-            self.get_u8(addr + 3),
+            self.read_u8(addr + 0),
+            self.read_u8(addr + 1),
+            self.read_u8(addr + 2),
+            self.read_u8(addr + 3),
         ]
     }
 

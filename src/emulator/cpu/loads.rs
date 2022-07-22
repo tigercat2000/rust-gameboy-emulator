@@ -60,9 +60,9 @@ pub fn handle_instruction(
             trace!(
                 "Reading Indirect @{:#X}: {:#X}",
                 addr,
-                memory_bus.get_u8(addr)
+                memory_bus.read_u8(addr)
             );
-            cpu.Accumulator = memory_bus.get_u8(addr);
+            cpu.Accumulator = memory_bus.read_u8(addr);
         }
         Instruction::LoadHighPageAImmediate(offset) => {
             let real_address = 0xFF00 + (offset as u16);
@@ -75,7 +75,7 @@ pub fn handle_instruction(
         }
         Instruction::LoadAHighPageImmediate(offset) => {
             let real_address = 0xFF00 + (offset as u16);
-            cpu.Accumulator = memory_bus.get_u8(real_address);
+            cpu.Accumulator = memory_bus.read_u8(real_address);
             trace!(
                 "LoadAHighPage loaded @{:#X} into A ({:#X})",
                 real_address,
@@ -90,7 +90,7 @@ pub fn handle_instruction(
         Instruction::LoadAHighPageIndirect => {
             let offset = cpu.C;
             let real_address = 0xFF00 + (offset as u16);
-            cpu.Accumulator = memory_bus.get_u8(real_address);
+            cpu.Accumulator = memory_bus.read_u8(real_address);
         }
         // 16-bit loads
         Instruction::LoadImmediate16(register, immediate) => match register {
@@ -118,7 +118,7 @@ pub fn handle_instruction(
                 reg_with_addr,
                 get_indirect_addr
             );
-            cpu.Accumulator = memory_bus.get_u8(get_indirect_addr);
+            cpu.Accumulator = memory_bus.read_u8(get_indirect_addr);
         }
         Instruction::LoadIndirectA(reg_with_addr) => {
             let addr = cpu.get_indirect(reg_with_addr);

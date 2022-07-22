@@ -64,7 +64,7 @@ pub fn handle_instruction(
             Register8::L => cpu.L = ALU::increment(cpu, cpu.L),
             Register8::IndirectHL => {
                 let addr = cpu.get_hl();
-                memory_bus.write_u8(addr, ALU::increment(cpu, memory_bus.get_u8(addr)));
+                memory_bus.write_u8(addr, ALU::increment(cpu, memory_bus.read_u8(addr)));
             }
             Register8::A => cpu.Accumulator = ALU::increment(cpu, cpu.Accumulator),
         },
@@ -77,13 +77,13 @@ pub fn handle_instruction(
             Register8::L => cpu.L = ALU::decrement(cpu, cpu.L),
             Register8::IndirectHL => {
                 let addr = cpu.get_hl();
-                memory_bus.write_u8(addr, ALU::decrement(cpu, memory_bus.get_u8(addr)));
+                memory_bus.write_u8(addr, ALU::decrement(cpu, memory_bus.read_u8(addr)));
             }
             Register8::A => cpu.Accumulator = ALU::decrement(cpu, cpu.Accumulator),
         },
         // 16 bit ALU operations
         Instruction::AddHLRegister(reg) => {
-            let val = ALU::add16(cpu, cpu.read16(reg));
+            let val = ALU::add_16(cpu, cpu.read_16(reg));
             cpu.H = val.get_bits(8..16) as u8;
             cpu.L = val.get_bits(0..8) as u8;
         }
@@ -147,7 +147,7 @@ pub fn handle_instruction(
                     Register8::E => cpu.E.get_bit(bit as usize),
                     Register8::H => cpu.H.get_bit(bit as usize),
                     Register8::L => cpu.L.get_bit(bit as usize),
-                    Register8::IndirectHL => memory_bus.get_u8(cpu.get_hl()).get_bit(bit as usize),
+                    Register8::IndirectHL => memory_bus.read_u8(cpu.get_hl()).get_bit(bit as usize),
                     Register8::A => cpu.Accumulator.get_bit(bit as usize),
                 },
             );
@@ -175,7 +175,7 @@ pub fn handle_instruction(
                 cpu.L.set_bit(bit as usize, true);
             }
             Register8::IndirectHL => {
-                let mut number = memory_bus.get_u8(cpu.get_hl());
+                let mut number = memory_bus.read_u8(cpu.get_hl());
                 number.set_bit(bit as usize, true);
                 memory_bus.write_u8(cpu.get_hl(), number);
             }
@@ -203,7 +203,7 @@ pub fn handle_instruction(
                 cpu.L.set_bit(bit as usize, false);
             }
             Register8::IndirectHL => {
-                let mut number = memory_bus.get_u8(cpu.get_hl());
+                let mut number = memory_bus.read_u8(cpu.get_hl());
                 number.set_bit(bit as usize, false);
                 memory_bus.write_u8(cpu.get_hl(), number);
             }
@@ -297,7 +297,7 @@ impl ALU {
         result
     }
 
-    pub fn add16(cpu: &mut CPU, value: u16) -> u16 {
+    pub fn add_16(cpu: &mut CPU, value: u16) -> u16 {
         let hl = cpu.get_hl();
         let (new_value, did_overflow) = hl.overflowing_add(value);
         cpu.set_flag(Flag::C, did_overflow);

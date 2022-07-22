@@ -59,7 +59,7 @@ impl CPU {
         ((self.H as u16) << 8) | (self.L as u16)
     }
 
-    pub fn read16(&self, register: Register16) -> u16 {
+    pub fn read_16(&self, register: Register16) -> u16 {
         match register {
             Register16::BC => self.get_bc(),
             Register16::DE => self.get_de(),

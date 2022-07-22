@@ -51,7 +51,7 @@ pub fn handle_instruction(
             }
         }
         Instruction::Ret => {
-            let addr = memory_bus.get_stack_16(&mut cpu.SP);
+            let addr = memory_bus.read_stack_16(&mut cpu.SP);
             trace!("Read {:#X} from stack @ {:#X}", addr, cpu.SP);
             cpu.PC = addr;
         }
@@ -59,12 +59,12 @@ pub fn handle_instruction(
             let condition = cpu.check_condition(condition);
 
             if condition {
-                cpu.PC = memory_bus.get_stack_16(&mut cpu.SP);
+                cpu.PC = memory_bus.read_stack_16(&mut cpu.SP);
                 trace!("Read {:#X} from stack @ {:#X}", cpu.PC, cpu.SP);
             }
         }
         Instruction::RetInterrupt => {
-            let addr = memory_bus.get_stack_16(&mut cpu.SP);
+            let addr = memory_bus.read_stack_16(&mut cpu.SP);
             trace!("Read {:#X} from stack @ {:#X}", addr, cpu.SP);
             cpu.PC = addr;
             cpu.IME = true;

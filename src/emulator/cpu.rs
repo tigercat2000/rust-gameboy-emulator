@@ -128,28 +128,28 @@ impl CPU {
                     ALU::write_16(
                         &mut self.B,
                         &mut self.C,
-                        memory_bus.get_stack_16(&mut self.SP),
+                        memory_bus.read_stack_16(&mut self.SP),
                     );
                 }
                 Register16Stack::DE => {
                     ALU::write_16(
                         &mut self.D,
                         &mut self.E,
-                        memory_bus.get_stack_16(&mut self.SP),
+                        memory_bus.read_stack_16(&mut self.SP),
                     );
                 }
                 Register16Stack::HL => {
                     ALU::write_16(
                         &mut self.H,
                         &mut self.L,
-                        memory_bus.get_stack_16(&mut self.SP),
+                        memory_bus.read_stack_16(&mut self.SP),
                     );
                 }
                 Register16Stack::AF => {
                     ALU::write_16(
                         &mut self.Accumulator,
                         &mut self.Flags,
-                        memory_bus.get_stack_16(&mut self.SP),
+                        memory_bus.read_stack_16(&mut self.SP),
                     );
                     self.Flags &= 0xF0;
                 }
@@ -265,7 +265,7 @@ impl CPU {
             Register8::E => self.E,
             Register8::H => self.H,
             Register8::L => self.L,
-            Register8::IndirectHL => memory_bus.get_u8(self.get_hl()),
+            Register8::IndirectHL => memory_bus.read_u8(self.get_hl()),
             Register8::A => self.Accumulator,
         }
     }
@@ -275,8 +275,8 @@ impl CPU {
             return 0;
         }
 
-        let mut interrupts_requested = memory_bus.get_u8(IF);
-        let triggered = interrupts_requested & memory_bus.get_u8(IE);
+        let mut interrupts_requested = memory_bus.read_u8(IF);
+        let triggered = interrupts_requested & memory_bus.read_u8(IE);
         if triggered == 0 {
             return 0;
         }

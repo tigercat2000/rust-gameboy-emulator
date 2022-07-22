@@ -22,7 +22,7 @@ pub struct PPU {
 impl PPU {
     /// Ticks in T-cycles
     pub fn tick(&mut self, memory_bus: &MemoryBus, frame_buffer: &mut FrameBuffer, ticks: u32) {
-        let lcd_control = memory_bus.get_u8(LCDC);
+        let lcd_control = memory_bus.read_u8(LCDC);
         if !lcd_control.get_bit(7) {
             trace!("LCD control disabled, skipping tick: {:#X}", lcd_control);
             return;
@@ -31,7 +31,7 @@ impl PPU {
         self.hblanking = false;
 
         let mut ticks_left = ticks;
-        let mut lcd_y = memory_bus.get_u8(LCD_Y);
+        let mut lcd_y = memory_bus.read_u8(LCD_Y);
         debug!("Running at {:#X} for {:#X} ticks", lcd_y, ticks_left);
         while ticks_left > 0 {
             let cur_ticks = ticks_left.min(80);
@@ -99,23 +99,23 @@ impl PPU {
         memory_bus: &MemoryBus,
         frame_buffer: &mut FrameBuffer,
     ) {
-        frame_buffer[memory_bus.get_u8(LCD_Y) as usize * GAMEBOY_WIDTH as usize + x] = color;
+        frame_buffer[memory_bus.read_u8(LCD_Y) as usize * GAMEBOY_WIDTH as usize + x] = color;
     }
 
     fn draw_bg(&mut self, memory_bus: &MemoryBus, frame_buffer: &mut FrameBuffer) {
-        let lcd_control = memory_bus.get_u8(LCDC);
+        let lcd_control = memory_bus.read_u8(LCDC);
         if !lcd_control.get_bit(0) {
             trace!("Skipping Background due to LCDC0");
             return;
         }
 
-        let lcd_y = memory_bus.get_u8(LCD_Y);
+        let lcd_y = memory_bus.read_u8(LCD_Y);
 
-        let bg_y = memory_bus.get_u8(SCROLL_Y).wrapping_add(lcd_y);
+        let bg_y = memory_bus.read_u8(SCROLL_Y).wrapping_add(lcd_y);
         let bg_tile_y = (bg_y as u16 >> 3) & 31;
 
         for x in 0..GAMEBOY_WIDTH {
-            let bg_x = memory_bus.get_u8(SCROLL_X) as u32 + x as u32;
+            let bg_x = memory_bus.read_u8(SCROLL_X) as u32 + x as u32;
             trace!("X: {:#X}, BGX: {:#X}", x, bg_x);
 
             let (tile_map_base, tile_y, tile_x, pixel_y, pixel_x) = {
@@ -142,7 +142,7 @@ impl PPU {
                 tile_map_base + tile_y * 32 + tile_x
             );
 
-            let tile_number = memory_bus.get_u8(tile_map_base + tile_y * 32 + tile_x);
+            let tile_number = memory_bus.read_u8(tile_map_base + tile_y * 32 + tile_x);
 
             let tile_address = {
                 let base_address = if lcd_control.get_bit(4) {
@@ -161,13 +161,13 @@ impl PPU {
             };
 
             let tile_pixel = tile_address + (pixel_y * 2);
-            let lsb_byte = memory_bus.get_u8(tile_pixel);
-            let msb_byte = memory_bus.get_u8(tile_pixel + 1);
+            let lsb_byte = memory_bus.read_u8(tile_pixel);
+            let msb_byte = memory_bus.read_u8(tile_pixel + 1);
 
             let color_id = (msb_byte.get_bit(7 - pixel_x as usize) as u8) << 1
                 | lsb_byte.get_bit(7 - pixel_x as usize) as u8;
 
-            let pallete = memory_bus.get_u8(PALLETE);
+            let pallete = memory_bus.read_u8(PALLETE);
             let remap = match color_id {
                 0 => pallete.get_bits(0..2),
                 1 => pallete.get_bits(2..4),
