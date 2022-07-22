@@ -1,5 +1,5 @@
 #![allow(non_snake_case)]
-use crate::instructions::{
+use crate::emulator::instructions::{
     AccumulatorFlagOp, AluOp, BitwiseOp, Condition, Instruction, Register16, Register16Indirect,
     Register16Stack, Register8,
 };

@@ -10,4 +10,5 @@ macro_rules! test_success {
     };
 }
 
+pub mod alu;
 pub mod instructions;

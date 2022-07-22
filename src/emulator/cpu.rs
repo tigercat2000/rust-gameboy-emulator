@@ -2,14 +2,16 @@ use bit_field::BitField;
 #[allow(unused_imports)]
 use tracing::{debug, error, event, info, trace};
 
-use crate::{
+use crate::emulator::{
     instructions::{
         AccumulatorFlagOp, AluOp, Condition, Instruction, Register16, Register16Indirect, Register8,
     },
     memory_bus::MemoryBus,
 };
 
-enum Flag {
+use super::instructions::BitwiseOp;
+
+pub enum Flag {
     /// Zero flag
     Z,
     /// Subtraction flag (BCD)
@@ -21,7 +23,7 @@ enum Flag {
 }
 
 #[allow(non_snake_case)]
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct CPU {
     pub Accumulator: u8,
     pub Flags: u8,
@@ -35,6 +37,24 @@ pub struct CPU {
     pub SP: u16,
     pub PC: u16,
     pub stop: bool,
+}
+
+impl Default for CPU {
+    fn default() -> Self {
+        Self {
+            Accumulator: Default::default(),
+            Flags: Default::default(),
+            B: Default::default(),
+            C: Default::default(),
+            D: Default::default(),
+            E: Default::default(),
+            H: Default::default(),
+            L: Default::default(),
+            SP: Default::default(),
+            PC: 0x100,
+            stop: Default::default(),
+        }
+    }
 }
 
 impl std::fmt::Display for CPU {
@@ -63,15 +83,15 @@ impl std::fmt::Display for CPU {
 }
 
 impl CPU {
-    fn get_bc(&self) -> u16 {
+    pub fn get_bc(&self) -> u16 {
         ((self.B as u16) << 8) | (self.C as u16)
     }
 
-    fn get_de(&self) -> u16 {
+    pub fn get_de(&self) -> u16 {
         ((self.D as u16) << 8) | (self.E as u16)
     }
 
-    fn get_hl(&self) -> u16 {
+    pub fn get_hl(&self) -> u16 {
         ((self.H as u16) << 8) | (self.L as u16)
     }
 
@@ -84,7 +104,7 @@ impl CPU {
         };
     }
 
-    fn get_flag(&self, flag: Flag) -> bool {
+    pub fn get_flag(&self, flag: Flag) -> bool {
         match flag {
             Flag::Z => self.Flags.get_bit(7),
             Flag::N => self.Flags.get_bit(6),
@@ -113,14 +133,19 @@ impl CPU {
         let instr = self.next_instruction(memory_bus);
         let mut action_taken = false;
         debug!("Executing instruction {} at {:#X}", instr, old_pc);
-        debug!(
-            "Registers before: BC: {:#X} DE: {:#X} HL: {:#X}",
+        trace!(
+            "Registers before: BC: {:#X} DE: {:#X} HL: {:#X} SP: {:#X}",
             self.get_bc(),
             self.get_de(),
-            self.get_hl()
+            self.get_hl(),
+            self.SP,
         );
         match instr {
-            Instruction::Nop => {}
+            Instruction::Nop => {
+                if self.PC > 0x400 {
+                    panic!("NOP is bug right now");
+                }
+            }
             Instruction::Jump(target) => {
                 self.PC = target;
             }
@@ -165,6 +190,17 @@ impl CPU {
                 memory_bus.write_u8(real_address, self.Accumulator);
             }
             Instruction::LoadAHighPage(offset) => {
+                let real_address = 0xFF00 + (offset as u16);
+                self.Accumulator = memory_bus.get_u8(real_address);
+                debug!("LoadAHighPage loaded {:#X} into A", self.Accumulator);
+            }
+            Instruction::LoadHighPageIndirectA => {
+                let offset = self.C;
+                let real_address = 0xFF00 + (offset as u16);
+                memory_bus.write_u8(real_address, self.Accumulator);
+            }
+            Instruction::LoadAHighPageIndirect => {
+                let offset = self.C;
                 let real_address = 0xFF00 + (offset as u16);
                 self.Accumulator = memory_bus.get_u8(real_address);
             }
@@ -350,14 +386,199 @@ impl CPU {
                 }
             },
             Instruction::Load(reg1, reg2) => {
+                if matches!(reg1, Register8::B) && matches!(reg2, Register8::B) {
+                    panic!("Debug breakpoint!");
+                }
                 self.write_register(reg1, reg2, memory_bus);
+            }
+            // TODO: Handle flags
+            Instruction::Increment(reg) => match reg {
+                Register8::B => self.B = self.B.wrapping_add(1),
+                Register8::C => self.C = self.C.wrapping_add(1),
+                Register8::D => self.D = self.D.wrapping_add(1),
+                Register8::E => self.E = self.E.wrapping_add(1),
+                Register8::H => self.H = self.H.wrapping_add(1),
+                Register8::L => self.L = self.L.wrapping_add(1),
+                Register8::IndirectHL => {
+                    let addr = self.get_hl();
+                    memory_bus.write_u8(addr, memory_bus.get_u8(addr).wrapping_add(1));
+                }
+                Register8::A => self.Accumulator = self.Accumulator.wrapping_add(1),
+            },
+            // TODO: Handle flags
+            Instruction::Decrement(reg) => match reg {
+                Register8::B => self.B = self.B.wrapping_sub(1),
+                Register8::C => self.C = self.C.wrapping_sub(1),
+                Register8::D => self.D = self.D.wrapping_sub(1),
+                Register8::E => self.E = self.E.wrapping_sub(1),
+                Register8::H => self.H = self.H.wrapping_sub(1),
+                Register8::L => self.L = self.L.wrapping_sub(1),
+                Register8::IndirectHL => {
+                    let addr = self.get_hl();
+                    memory_bus.write_u8(addr, memory_bus.get_u8(addr).wrapping_sub(1));
+                }
+                Register8::A => self.Accumulator = self.Accumulator.wrapping_sub(1),
+            },
+            Instruction::JumpHL => {
+                self.PC = self.get_hl();
+            }
+
+            // TODO: Support interrupts
+            Instruction::DisableInterrupts => {}
+            // TODO: Support interrupts
+            Instruction::EnableInterrupts => {}
+            Instruction::Call(imm) => {
+                trace!("Writing {:#X} to stack @ {:#X}", self.PC, self.SP);
+                memory_bus.write_stack_16(&mut self.SP, self.PC);
+                self.PC = imm;
+            }
+            Instruction::Ret => {
+                let addr = memory_bus.get_stack_16(&mut self.SP);
+                trace!("Read {:#X} from stack @ {:#X}", addr, self.SP);
+                self.PC = addr;
+            }
+            Instruction::RetConditional(condition) => match condition {
+                Condition::NZ => {
+                    if !self.get_flag(Flag::Z) {
+                        self.PC = memory_bus.get_stack_16(&mut self.SP);
+                        trace!("Read {:#X} from stack @ {:#X}", self.PC, self.SP);
+                    }
+                }
+                Condition::Z => {
+                    if self.get_flag(Flag::Z) {
+                        self.PC = memory_bus.get_stack_16(&mut self.SP);
+                        trace!("Read {:#X} from stack @ {:#X}", self.PC, self.SP);
+                    }
+                }
+                Condition::NC => {
+                    if !self.get_flag(Flag::C) {
+                        self.PC = memory_bus.get_stack_16(&mut self.SP);
+                        trace!("Read {:#X} from stack @ {:#X}", self.PC, self.SP);
+                    }
+                }
+                Condition::C => {
+                    if self.get_flag(Flag::C) {
+                        self.PC = memory_bus.get_stack_16(&mut self.SP);
+                        trace!("Read {:#X} from stack @ {:#X}", self.PC, self.SP);
+                    }
+                }
+            },
+            Instruction::JumpRelative(rel) => {
+                self.PC = ALU::add_rel(self.PC, rel);
+            }
+            Instruction::JumpRelativeConditional(condition, rel) => match condition {
+                Condition::NZ => {
+                    if !self.get_flag(Flag::Z) {
+                        self.PC = ALU::add_rel(self.PC, rel);
+                    }
+                }
+                Condition::Z => {
+                    if self.get_flag(Flag::Z) {
+                        self.PC = ALU::add_rel(self.PC, rel);
+                    }
+                }
+                Condition::NC => {
+                    if !self.get_flag(Flag::C) {
+                        self.PC = ALU::add_rel(self.PC, rel);
+                    }
+                }
+                Condition::C => {
+                    if self.get_flag(Flag::C) {
+                        self.PC = ALU::add_rel(self.PC, rel);
+                    }
+                }
+            },
+            Instruction::Bit(bit, reg) => {
+                self.set_flag(
+                    Flag::Z,
+                    match reg {
+                        Register8::B => self.B.get_bit(bit as usize),
+                        Register8::C => self.C.get_bit(bit as usize),
+                        Register8::D => self.D.get_bit(bit as usize),
+                        Register8::E => self.E.get_bit(bit as usize),
+                        Register8::H => self.H.get_bit(bit as usize),
+                        Register8::L => self.L.get_bit(bit as usize),
+                        Register8::IndirectHL => {
+                            memory_bus.get_u8(self.get_hl()).get_bit(bit as usize)
+                        }
+                        Register8::A => self.Accumulator.get_bit(bit as usize),
+                    },
+                );
+
+                self.set_flag(Flag::N, false);
+                self.set_flag(Flag::H, true);
+            }
+            Instruction::SetBit(bit, reg) => match reg {
+                Register8::B => {
+                    self.B.set_bit(bit as usize, true);
+                }
+                Register8::C => {
+                    self.C.set_bit(bit as usize, true);
+                }
+                Register8::D => {
+                    self.D.set_bit(bit as usize, true);
+                }
+                Register8::E => {
+                    self.E.set_bit(bit as usize, true);
+                }
+                Register8::H => {
+                    self.H.set_bit(bit as usize, true);
+                }
+                Register8::L => {
+                    self.L.set_bit(bit as usize, true);
+                }
+                Register8::IndirectHL => {
+                    memory_bus.get_u8(self.get_hl()).set_bit(bit as usize, true);
+                }
+                Register8::A => {
+                    self.Accumulator.set_bit(bit as usize, true);
+                }
+            },
+            Instruction::ResetBit(bit, reg) => match reg {
+                Register8::B => {
+                    self.B.set_bit(bit as usize, false);
+                }
+                Register8::C => {
+                    self.C.set_bit(bit as usize, false);
+                }
+                Register8::D => {
+                    self.D.set_bit(bit as usize, false);
+                }
+                Register8::E => {
+                    self.E.set_bit(bit as usize, false);
+                }
+                Register8::H => {
+                    self.H.set_bit(bit as usize, false);
+                }
+                Register8::L => {
+                    self.L.set_bit(bit as usize, false);
+                }
+                Register8::IndirectHL => {
+                    memory_bus
+                        .get_u8(self.get_hl())
+                        .set_bit(bit as usize, false);
+                }
+                Register8::A => {
+                    self.Accumulator.set_bit(bit as usize, false);
+                }
+            },
+            Instruction::Bitwise(op, register) => {
+                ALU::handle_bitwise(self, op, register, memory_bus);
+            }
+            Instruction::Halt => {
+                // TODO: Handle interrupts
+                self.PC = old_pc;
+            }
+            Instruction::Reset(offset) => {
+                memory_bus.write_stack_16(&mut self.SP, self.PC);
+                self.PC = offset as u16;
             }
             _ => {
                 error!("Instruction not implemented: {}", instr);
                 unimplemented!("Instruction not implemented: {}", instr)
             }
         }
-        debug!(
+        trace!(
             "Registers after: BC: {:#X} DE: {:#X} HL: {:#X}",
             self.get_bc(),
             self.get_de(),
@@ -455,7 +676,7 @@ impl CPU {
 }
 
 #[allow(clippy::upper_case_acronyms)]
-struct ALU;
+pub struct ALU;
 
 impl ALU {
     pub fn handle_op(cpu: &mut CPU, op: AluOp, value: u8) {
@@ -487,6 +708,21 @@ impl ALU {
                 ALU::sub(cpu, value);
             }
         }
+    }
+
+    fn handle_bitwise(cpu: &mut CPU, op: BitwiseOp, register: Register8, memory_bus: &MemoryBus) {
+        let value = cpu.read_register(register, memory_bus);
+        let result = match op {
+            BitwiseOp::RotateLeftCarry => ALU::rotate_left_carry(cpu, value),
+            BitwiseOp::RotateRightCarry => ALU::rotate_right_carry(cpu, value),
+            BitwiseOp::RotateLeft => ALU::rotate_left(cpu, value),
+            BitwiseOp::RotateRight => ALU::rotate_right(cpu, value),
+            BitwiseOp::ShiftLeftArithmetic => ALU::shift_left_arithmetic(cpu, value),
+            BitwiseOp::ShiftRightArithmetic => ALU::shift_right_arithmetic(cpu, value),
+            BitwiseOp::Swap => ALU::swap_nibble(cpu, value),
+            BitwiseOp::ShiftRightLogical => ALU::shift_right_logical(cpu, value),
+        };
+        cpu.write_register_immediate(register, result, memory_bus);
     }
 
     pub fn add(cpu: &mut CPU, value: u8) -> u8 {
@@ -583,6 +819,35 @@ impl ALU {
         new_value
     }
 
+    pub fn shift_left_arithmetic(cpu: &mut CPU, value: u8) -> u8 {
+        let carry = value.get_bit(7);
+        let new_value = value << 1;
+        Self::sr_flag_update(cpu, carry, new_value);
+        new_value
+    }
+
+    pub fn shift_right_arithmetic(cpu: &mut CPU, value: u8) -> u8 {
+        let carry = value.get_bit(0);
+        let new_value = (value as i8 >> 1) as u8;
+        Self::sr_flag_update(cpu, carry, new_value);
+        new_value
+    }
+
+    pub fn swap_nibble(cpu: &mut CPU, value: u8) -> u8 {
+        let mut new_number = 0u8;
+        new_number.set_bits(0..4, value.get_bits(4..8));
+        new_number.set_bits(4..8, value.get_bits(0..4));
+        Self::sr_flag_update(cpu, false, new_number);
+        new_number
+    }
+
+    pub fn shift_right_logical(cpu: &mut CPU, value: u8) -> u8 {
+        let carry = value.get_bit(0);
+        let new_value = value >> 1;
+        Self::sr_flag_update(cpu, carry, new_value);
+        new_value
+    }
+
     pub fn increment_16(upper: &mut u8, lower: &mut u8) {
         let mut addr = 0u16;
         addr.set_bits(0..8, *lower as u16);
@@ -599,5 +864,13 @@ impl ALU {
         addr = addr.wrapping_sub(1);
         *lower = addr.get_bits(0..8) as u8;
         *upper = addr.get_bits(8..16) as u8;
+    }
+
+    pub fn add_rel(addr: u16, rel: i8) -> u16 {
+        if rel.is_negative() {
+            addr.wrapping_sub(rel.wrapping_abs() as u16)
+        } else {
+            addr.wrapping_add(rel as u16)
+        }
     }
 }

@@ -1,8 +1,8 @@
 use bit_field::BitField;
 
-use tracing::trace;
+use tracing::{debug, trace};
 
-use crate::{
+use crate::emulator::{
     memory_bus::{MemoryBus, LCDC, LCD_Y, PALLETE, SCROLL_X, SCROLL_Y},
     GAMEBOY_HEIGHT, GAMEBOY_WIDTH,
 };
@@ -30,6 +30,7 @@ impl PPU {
 
         let mut ticks_left = ticks;
         let mut lcd_y = memory_bus.get_u8(LCD_Y);
+        debug!("Running at {:#X} for {:#X} ticks", lcd_y, ticks_left);
         while ticks_left > 0 {
             let cur_ticks = ticks_left.min(80);
             self.mode_clock += cur_ticks;
@@ -101,6 +102,7 @@ impl PPU {
     fn draw_bg(&mut self, memory_bus: &MemoryBus, frame_buffer: &mut FrameBuffer) {
         let lcd_control = memory_bus.get_u8(LCDC);
         if !lcd_control.get_bit(0) {
+            trace!("Skipping Background due to LCDC0");
             return;
         }
 
