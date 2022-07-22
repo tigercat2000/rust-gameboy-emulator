@@ -139,6 +139,8 @@ impl Interrupts {
 #[derive(Debug)]
 pub struct MemoryBus {
     program: Vec<u8>,
+    /// HACK: TODO: Remove when doing MBC
+    fake_cartram: [u8; 0xBFFF - 0xA000 + 1],
     wram1: [u8; 0xCFFF - 0xC000 + 1],
     wram2: [u8; 0xDFFF - 0xD000 + 1],
     vram: [u8; 0x1FFF + 1],
@@ -155,6 +157,7 @@ impl MemoryBus {
         reader.read_to_end(&mut vec).unwrap();
         Self {
             program: vec,
+            fake_cartram: [0; 0xBFFF - 0xA000 + 1],
             wram1: [0; 0xCFFF - 0xC000 + 1],
             wram2: [0; 0xDFFF - 0xD000 + 1],
             vram: [0; 0x1FFF + 1],
@@ -173,6 +176,8 @@ impl MemoryBus {
                 self.program[addr as usize]
             }
             0x8000..=0x9FFF => self.vram[addr as usize - 0x8000],
+            // TODO: Remove when MBC
+            0xA000..=0xBFFF => self.fake_cartram[addr as usize - 0xA000],
             // WRAM 1
             0xC000..=0xCFFF => {
                 let val = self.wram1[addr as usize - 0xC000];
@@ -266,6 +271,8 @@ impl MemoryBus {
                 trace!("VRAM write @{:#X}: {:#X} '{}'", addr, byte, byte as char);
                 self.vram[addr as usize - 0x8000] = byte
             }
+            // TODO: Remove when MBC
+            0xA000..=0xBFFF => self.fake_cartram[addr as usize - 0xA000] = byte,
             // WRAM 1
             0xC000..=0xCFFF => {
                 trace!("WRAM write @{:#X}: {:#X}", addr, byte);
@@ -297,6 +304,18 @@ impl MemoryBus {
                     addr, byte
                 );
             }
+            // Serial
+            0xFF01 => {
+                let byte = byte as char;
+                if byte == '\n' {
+                    println!("{}", self.console_buffer);
+                    self.console_buffer.clear();
+                } else {
+                    self.console_buffer.push(byte);
+                }
+            }
+            // Serial Flush
+            0xFF02 => {}
             // LCD
             0xFF40..=0xFF4B => {
                 trace!("LCD register write @{:#X}: {:#X}", addr, byte);
@@ -327,16 +346,6 @@ impl MemoryBus {
                 trace!("IE register write @{:#X}: {:#X}", addr, byte);
                 self.interrupts.set_interrupt_enable(byte);
             }
-            0xFF01 => {
-                let byte = byte as char;
-                if byte == '\n' {
-                    println!("{}", self.console_buffer);
-                    self.console_buffer.clear();
-                } else {
-                    self.console_buffer.push(byte);
-                }
-            }
-            0xFF02 => {}
             // I/O registers
             0xFF00..=0xFF7F => {
                 warn!("Unimplemented IO register write @{:#X}: {:#X}", addr, byte);
@@ -346,7 +355,9 @@ impl MemoryBus {
                 trace!("HRAM write @{:#X}: {:#X}", addr, byte);
                 self.hram[addr as usize - 0xFF80] = byte
             }
-            _ => panic!("Illegal memory write at {:#X}", addr),
+            #[allow(unreachable_patterns)]
+            // During periods where we remove some memory
+            _ => unimplemented!("Unimplemented memory write at {:#X}", addr),
         }
     }
 
