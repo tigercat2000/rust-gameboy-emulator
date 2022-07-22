@@ -107,6 +107,15 @@ impl CPU {
         ((self.H as u16) << 8) | (self.L as u16)
     }
 
+    fn read16(&self, register: Register16) -> u16 {
+        match register {
+            Register16::BC => self.get_bc(),
+            Register16::DE => self.get_de(),
+            Register16::HL => self.get_hl(),
+            Register16::SP => self.SP,
+        }
+    }
+
     fn set_flag(&mut self, flag: Flag, value: bool) {
         match flag {
             Flag::Z => self.Flags.set_bit(7, value),
@@ -122,6 +131,15 @@ impl CPU {
             Flag::N => self.Flags.get_bit(6),
             Flag::H => self.Flags.get_bit(5),
             Flag::C => self.Flags.get_bit(4),
+        }
+    }
+
+    fn check_condition(&self, condition: Condition) -> bool {
+        match condition {
+            Condition::NZ => !self.get_flag(Flag::Z),
+            Condition::Z => self.get_flag(Flag::Z),
+            Condition::NC => !self.get_flag(Flag::C),
+            Condition::C => self.get_flag(Flag::C),
         }
     }
 
@@ -190,27 +208,46 @@ impl CPU {
                     self.L = immediate;
                 }
                 Register8::IndirectHL => {
-                    let addr = self.get_hl();
-                    memory_bus.write_u8(addr, immediate);
+                    trace!(
+                        "Writing to IndirectHL @{:#X}: {:#X}",
+                        self.get_hl(),
+                        immediate
+                    );
+                    memory_bus.write_u8(self.get_hl(), immediate);
                 }
                 Register8::A => {
                     self.Accumulator = immediate;
                 }
             },
             Instruction::LoadIndirectImmediateA(addr) => {
+                trace!("Writing to Indirect @{:#X}: {:#X}", addr, self.Accumulator);
                 memory_bus.write_u8(addr, self.Accumulator);
             }
             Instruction::LoadAIndirectImmediate(addr) => {
+                trace!(
+                    "Reading Indirect @{:#X}: {:#X}",
+                    addr,
+                    memory_bus.get_u8(addr)
+                );
                 self.Accumulator = memory_bus.get_u8(addr);
             }
             Instruction::LoadHighPageA(offset) => {
                 let real_address = 0xFF00 + (offset as u16);
                 memory_bus.write_u8(real_address, self.Accumulator);
+                trace!(
+                    "LoadHighPageA loaded A ({:#X}) into @{:#X}",
+                    self.Accumulator,
+                    real_address
+                );
             }
             Instruction::LoadAHighPage(offset) => {
                 let real_address = 0xFF00 + (offset as u16);
                 self.Accumulator = memory_bus.get_u8(real_address);
-                debug!("LoadAHighPage loaded {:#X} into A", self.Accumulator);
+                trace!(
+                    "LoadAHighPage loaded @{:#X} into A ({:#X})",
+                    real_address,
+                    self.Accumulator
+                );
             }
             Instruction::LoadHighPageIndirectA => {
                 let offset = self.C;
@@ -235,7 +272,9 @@ impl CPU {
                 AccumulatorFlagOp::RotateRightA => {
                     self.Accumulator = ALU::rotate_right(self, self.Accumulator);
                 }
-                AccumulatorFlagOp::DecimalAdjustAfterAddition => todo!(),
+                AccumulatorFlagOp::DecimalAdjustAfterAddition => {
+                    self.Accumulator = ALU::decimal_adjust_after_addition(self, self.Accumulator);
+                }
                 AccumulatorFlagOp::ComplementAccumulator => {
                     self.Accumulator = !self.Accumulator;
                     self.set_flag(Flag::N, true);
@@ -257,12 +296,7 @@ impl CPU {
             }
             Instruction::AluImmediate(alu_op, immediate) => ALU::handle_op(self, alu_op, immediate),
             Instruction::JumpConditional(condition, addr) => {
-                let jump = match condition {
-                    Condition::NZ => !self.get_flag(Flag::Z),
-                    Condition::Z => self.get_flag(Flag::Z),
-                    Condition::NC => !self.get_flag(Flag::C),
-                    Condition::C => self.get_flag(Flag::C),
-                };
+                let jump = self.check_condition(condition);
                 if jump {
                     action_taken = true;
                     self.PC = addr;
@@ -404,38 +438,36 @@ impl CPU {
                 }
             },
             Instruction::Load(reg1, reg2) => {
-                if matches!(reg1, Register8::B) && matches!(reg2, Register8::B) {
-                    panic!("Debug breakpoint!");
-                }
+                // if matches!(reg1, Register8::B) && matches!(reg2, Register8::B) {
+                //     panic!("Debug breakpoint!");
+                // }
                 self.write_register(reg1, reg2, memory_bus);
             }
-            // TODO: Handle flags
             Instruction::Increment(reg) => match reg {
-                Register8::B => self.B = self.B.wrapping_add(1),
-                Register8::C => self.C = self.C.wrapping_add(1),
-                Register8::D => self.D = self.D.wrapping_add(1),
-                Register8::E => self.E = self.E.wrapping_add(1),
-                Register8::H => self.H = self.H.wrapping_add(1),
-                Register8::L => self.L = self.L.wrapping_add(1),
+                Register8::B => self.B = ALU::increment(self, self.B),
+                Register8::C => self.C = ALU::increment(self, self.C),
+                Register8::D => self.D = ALU::increment(self, self.D),
+                Register8::E => self.E = ALU::increment(self, self.E),
+                Register8::H => self.H = ALU::increment(self, self.H),
+                Register8::L => self.L = ALU::increment(self, self.L),
                 Register8::IndirectHL => {
                     let addr = self.get_hl();
-                    memory_bus.write_u8(addr, memory_bus.get_u8(addr).wrapping_add(1));
+                    memory_bus.write_u8(addr, ALU::increment(self, memory_bus.get_u8(addr)));
                 }
-                Register8::A => self.Accumulator = self.Accumulator.wrapping_add(1),
+                Register8::A => self.Accumulator = ALU::increment(self, self.Accumulator),
             },
-            // TODO: Handle flags
             Instruction::Decrement(reg) => match reg {
-                Register8::B => self.B = self.B.wrapping_sub(1),
-                Register8::C => self.C = self.C.wrapping_sub(1),
-                Register8::D => self.D = self.D.wrapping_sub(1),
-                Register8::E => self.E = self.E.wrapping_sub(1),
-                Register8::H => self.H = self.H.wrapping_sub(1),
-                Register8::L => self.L = self.L.wrapping_sub(1),
+                Register8::B => self.B = ALU::decrement(self, self.B),
+                Register8::C => self.C = ALU::decrement(self, self.C),
+                Register8::D => self.D = ALU::decrement(self, self.D),
+                Register8::E => self.E = ALU::decrement(self, self.E),
+                Register8::H => self.H = ALU::decrement(self, self.H),
+                Register8::L => self.L = ALU::decrement(self, self.L),
                 Register8::IndirectHL => {
                     let addr = self.get_hl();
-                    memory_bus.write_u8(addr, memory_bus.get_u8(addr).wrapping_sub(1));
+                    memory_bus.write_u8(addr, ALU::decrement(self, memory_bus.get_u8(addr)));
                 }
-                Register8::A => self.Accumulator = self.Accumulator.wrapping_sub(1),
+                Register8::A => self.Accumulator = ALU::decrement(self, self.Accumulator),
             },
             Instruction::Push(register) => match register {
                 Register16Stack::BC => {
@@ -483,6 +515,7 @@ impl CPU {
                         &mut self.Flags,
                         memory_bus.get_stack_16(&mut self.SP),
                     );
+                    self.Flags &= 0xF0;
                 }
             },
             Instruction::JumpHL => {
@@ -505,37 +538,27 @@ impl CPU {
                 memory_bus.write_stack_16(&mut self.SP, self.PC);
                 self.PC = imm;
             }
+            Instruction::CallConditional(condition, addr) => {
+                let jump = self.check_condition(condition);
+                if jump {
+                    action_taken = true;
+                    memory_bus.write_stack_16(&mut self.SP, self.PC);
+                    self.PC = addr;
+                }
+            }
             Instruction::Ret => {
                 let addr = memory_bus.get_stack_16(&mut self.SP);
                 trace!("Read {:#X} from stack @ {:#X}", addr, self.SP);
                 self.PC = addr;
             }
-            Instruction::RetConditional(condition) => match condition {
-                Condition::NZ => {
-                    if !self.get_flag(Flag::Z) {
-                        self.PC = memory_bus.get_stack_16(&mut self.SP);
-                        trace!("Read {:#X} from stack @ {:#X}", self.PC, self.SP);
-                    }
+            Instruction::RetConditional(condition) => {
+                let condition = self.check_condition(condition);
+
+                if condition {
+                    self.PC = memory_bus.get_stack_16(&mut self.SP);
+                    trace!("Read {:#X} from stack @ {:#X}", self.PC, self.SP);
                 }
-                Condition::Z => {
-                    if self.get_flag(Flag::Z) {
-                        self.PC = memory_bus.get_stack_16(&mut self.SP);
-                        trace!("Read {:#X} from stack @ {:#X}", self.PC, self.SP);
-                    }
-                }
-                Condition::NC => {
-                    if !self.get_flag(Flag::C) {
-                        self.PC = memory_bus.get_stack_16(&mut self.SP);
-                        trace!("Read {:#X} from stack @ {:#X}", self.PC, self.SP);
-                    }
-                }
-                Condition::C => {
-                    if self.get_flag(Flag::C) {
-                        self.PC = memory_bus.get_stack_16(&mut self.SP);
-                        trace!("Read {:#X} from stack @ {:#X}", self.PC, self.SP);
-                    }
-                }
-            },
+            }
             Instruction::JumpRelative(rel) => {
                 self.PC = ALU::add_rel(self.PC, rel);
             }
@@ -601,7 +624,9 @@ impl CPU {
                     self.L.set_bit(bit as usize, true);
                 }
                 Register8::IndirectHL => {
-                    memory_bus.get_u8(self.get_hl()).set_bit(bit as usize, true);
+                    let mut number = memory_bus.get_u8(self.get_hl());
+                    number.set_bit(bit as usize, true);
+                    memory_bus.write_u8(self.get_hl(), number);
                 }
                 Register8::A => {
                     self.Accumulator.set_bit(bit as usize, true);
@@ -627,9 +652,9 @@ impl CPU {
                     self.L.set_bit(bit as usize, false);
                 }
                 Register8::IndirectHL => {
-                    memory_bus
-                        .get_u8(self.get_hl())
-                        .set_bit(bit as usize, false);
+                    let mut number = memory_bus.get_u8(self.get_hl());
+                    number.set_bit(bit as usize, false);
+                    memory_bus.write_u8(self.get_hl(), number);
                 }
                 Register8::A => {
                     self.Accumulator.set_bit(bit as usize, false);
@@ -645,11 +670,21 @@ impl CPU {
                 memory_bus.write_stack_16(&mut self.SP, self.PC);
                 self.PC = offset as u16;
             }
+            Instruction::AddHLRegister(reg) => {
+                let val = ALU::add16(self, self.read16(reg));
+                self.H = val.get_bits(8..16) as u8;
+                self.L = val.get_bits(0..8) as u8;
+            }
             _ => {
                 error!("Instruction not implemented: {}", instr);
+
+                // error!("High Ram Dump");
+                // memory_bus.hram_dump();
+
                 unimplemented!("Instruction not implemented: {}", instr)
             }
         }
+
         trace!(
             "Registers after: BC: {:#X} DE: {:#X} HL: {:#X}",
             self.get_bc(),
@@ -788,15 +823,13 @@ impl ALU {
                 cpu.Accumulator = ALU::add(cpu, value);
             }
             AluOp::AddWithCarry => {
-                cpu.Accumulator = ALU::add(cpu, cpu.get_flag(Flag::C) as u8);
-                cpu.Accumulator = ALU::add(cpu, value);
+                cpu.Accumulator = ALU::adc(cpu, value);
             }
             AluOp::Subtract => {
                 cpu.Accumulator = ALU::sub(cpu, value);
             }
             AluOp::SubtractWithCarry => {
-                cpu.Accumulator = ALU::sub(cpu, cpu.get_flag(Flag::C) as u8);
-                cpu.Accumulator = ALU::sub(cpu, value);
+                cpu.Accumulator = ALU::sbc(cpu, value);
             }
             AluOp::And => {
                 cpu.Accumulator = ALU::and(cpu, value);
@@ -838,6 +871,31 @@ impl ALU {
         new_value
     }
 
+    pub fn adc(cpu: &mut CPU, value: u8) -> u8 {
+        let carry = cpu.get_flag(Flag::C) as u8;
+        let result = cpu.Accumulator.wrapping_add(value).wrapping_add(carry);
+        cpu.set_flag(Flag::Z, result == 0);
+        cpu.set_flag(Flag::N, false);
+        cpu.set_flag(
+            Flag::H,
+            (cpu.Accumulator as u16 & 0xF) + (value as u16 & 0xF) + carry as u16 > 0xF,
+        );
+        cpu.set_flag(
+            Flag::C,
+            cpu.Accumulator as u16 + value as u16 + carry as u16 > 0xFF,
+        );
+        result
+    }
+
+    pub fn add16(cpu: &mut CPU, value: u16) -> u16 {
+        let hl = cpu.get_hl();
+        let (new_value, did_overflow) = hl.overflowing_add(value);
+        cpu.set_flag(Flag::C, did_overflow);
+        cpu.set_flag(Flag::N, false);
+        cpu.set_flag(Flag::H, (hl & 0x07FF) + (value & 0x07FF) > 0x07FF);
+        new_value
+    }
+
     pub fn sub(cpu: &mut CPU, value: u8) -> u8 {
         let (new_value, did_overflow) = cpu.Accumulator.overflowing_sub(value);
         cpu.set_flag(Flag::Z, new_value == 0);
@@ -846,6 +904,26 @@ impl ALU {
         cpu.set_flag(Flag::H, (cpu.Accumulator & 0xF) < (value & 0xF));
         cpu.set_flag(Flag::C, did_overflow);
         new_value
+    }
+
+    pub fn sbc(cpu: &mut CPU, value: u8) -> u8 {
+        let carry = cpu.get_flag(Flag::C) as u8;
+        let result = cpu.Accumulator.wrapping_sub(value).wrapping_sub(carry);
+        cpu.set_flag(Flag::Z, result == 0);
+        cpu.set_flag(Flag::N, true);
+        cpu.set_flag(
+            Flag::H,
+            (cpu.Accumulator & 0xF)
+                .wrapping_sub(value & 0xF)
+                .wrapping_sub(carry)
+                & (0xF + 1)
+                != 0,
+        );
+        cpu.set_flag(
+            Flag::C,
+            (cpu.Accumulator as u16) < (value as u16 + carry as u16),
+        );
+        result
     }
 
     pub fn and(cpu: &mut CPU, value: u8) -> u8 {
@@ -948,6 +1026,50 @@ impl ALU {
         let carry = value.get_bit(0);
         let new_value = value >> 1;
         Self::sr_flag_update(cpu, carry, new_value);
+        new_value
+    }
+
+    pub fn decimal_adjust_after_addition(cpu: &mut CPU, value: u8) -> u8 {
+        let mut new_value = value;
+        let mut adjust = if cpu.get_flag(Flag::C) { 0x60 } else { 0x00 };
+
+        if cpu.get_flag(Flag::H) {
+            adjust |= 0x06;
+        }
+
+        if !cpu.get_flag(Flag::N) {
+            if new_value & 0x0F > 0x09 {
+                adjust |= 0x06;
+            }
+            if new_value > 0x99 {
+                adjust |= 0x60;
+            }
+            new_value = new_value.wrapping_add(adjust);
+        } else {
+            new_value = new_value.wrapping_sub(adjust);
+        }
+
+        cpu.set_flag(Flag::C, adjust >= 0x60);
+        cpu.set_flag(Flag::H, false);
+        cpu.set_flag(Flag::Z, new_value == 0);
+        new_value
+    }
+
+    pub fn increment(cpu: &mut CPU, value: u8) -> u8 {
+        let new_value = value.wrapping_add(1);
+        cpu.set_flag(Flag::Z, new_value == 0);
+        cpu.set_flag(Flag::N, false);
+        // Half-carry is set if the lower 4 bits added together overflow
+        cpu.set_flag(Flag::H, (cpu.Accumulator & 0xF) + (value & 0xF) > 0xF);
+        new_value
+    }
+
+    pub fn decrement(cpu: &mut CPU, value: u8) -> u8 {
+        let new_value = value.wrapping_sub(1);
+        cpu.set_flag(Flag::Z, new_value == 0);
+        cpu.set_flag(Flag::N, false);
+        // Half-carry is set if the lower 4 bits added together overflow
+        cpu.set_flag(Flag::H, (cpu.Accumulator & 0xF) + (value & 0xF) > 0xF);
         new_value
     }
 

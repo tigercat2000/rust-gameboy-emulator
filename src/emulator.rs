@@ -70,9 +70,12 @@ pub fn run() -> Arc<DoubleBuffer> {
         let buffer = emu_buffer;
         // let file = include_bytes!("../test.gb");
         // let file = include_bytes!("../hello-world.gb");
-        let file = include_bytes!("../tetris.gb");
+        // let file = include_bytes!("../tetris.gb");
         // let file = include_bytes!("../alu-test.gb");
         // let file = include_bytes!("../dmg-acid2.gb");
+        // let file = include_bytes!("../cpu_instrs.gb");
+        // let file = include_bytes!("../01-special.gb");
+        let file = include_bytes!("../04-op r,imm.gb");
 
         let memory_bus = MemoryBus::new(file.as_slice());
         let mut cpu = CPU::default();

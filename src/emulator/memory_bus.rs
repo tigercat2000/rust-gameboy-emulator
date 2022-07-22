@@ -1,7 +1,7 @@
 use std::{cell::RefCell, io::Read, sync::Mutex};
 
 use bit_field::BitField;
-use tracing::{trace, warn};
+use tracing::{error, trace, warn};
 
 pub const LCDC: u16 = 0xFF40;
 pub const SCROLL_Y: u16 = 0xFF42;
@@ -133,6 +133,7 @@ pub struct MemoryBus {
     hram: Mutex<RefCell<[u8; 0xFFFE - 0xFF80 + 1]>>,
     lcd: Mutex<RefCell<LCD>>,
     interrupts: Mutex<RefCell<Interrupts>>,
+    console_buffer: Mutex<RefCell<String>>,
 }
 
 impl MemoryBus {
@@ -148,6 +149,7 @@ impl MemoryBus {
             hram: Mutex::new(RefCell::new([0; 0xFFFE - 0xFF80 + 1])),
             lcd: Mutex::new(RefCell::new(LCD::default())),
             interrupts: Mutex::new(RefCell::new(Interrupts::default())),
+            console_buffer: Mutex::new(RefCell::new(String::new())),
         }
     }
 
@@ -283,15 +285,15 @@ impl MemoryBus {
                 trace!("HRAM read @{:#X}: {:#X}", addr, val);
                 val
             }
-            _ => unimplemented!(),
+            other => {
+                error!("Attempt to read unimplemented memory {:#X}", other);
+                unimplemented!()
+            }
         }
     }
 
     #[allow(clippy::identity_op)]
     pub fn get_instr(&self, addr: u16) -> [u8; 4] {
-        if addr >= 0x7FFF {
-            warn!("Reading instruction outside of ROM @{:#X}", addr);
-        }
         [
             self.get_u8(addr + 0),
             self.get_u8(addr + 1),
@@ -434,6 +436,18 @@ impl MemoryBus {
 
                 interrupts.set_interrupt_enable(byte);
             }
+            0xFF01 => {
+                let console_guard = self.console_buffer.lock().unwrap();
+                let mut console_buffer = console_guard.borrow_mut();
+                let byte = byte as char;
+                if byte == '\n' {
+                    println!("{}", console_buffer);
+                    console_buffer.clear();
+                } else {
+                    console_buffer.push(byte);
+                }
+            }
+            0xFF02 => {}
             // I/O registers
             0xFF00..=0xFF7F => {
                 warn!("Unimplemented IO register write @{:#X}: {:#X}", addr, byte);
@@ -472,5 +486,9 @@ impl MemoryBus {
             Interrupt::Serial => interrupts.serial_requested = true,
             Interrupt::Joypad => interrupts.joypad_requested = true,
         }
+    }
+
+    pub fn hram_dump(&self) {
+        error!("{:#X?}", self.hram);
     }
 }
