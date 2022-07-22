@@ -2,7 +2,7 @@ use tracing::trace;
 
 use crate::emulator::{instructions::Instruction, memory_bus::MemoryBus};
 
-use super::{ALU, CPU};
+use super::CPU;
 
 pub fn handle_instruction(
     cpu: &mut CPU,
@@ -24,13 +24,13 @@ pub fn handle_instruction(
             }
         }
         Instruction::JumpRelative(rel) => {
-            cpu.PC = ALU::add_rel(cpu.PC, rel);
+            cpu.PC = cpu.PC.wrapping_add(rel as u16);
         }
         Instruction::JumpRelativeConditional(condition, rel) => {
             let jump = cpu.check_condition(condition);
             if jump {
                 action_taken = true;
-                cpu.PC = ALU::add_rel(cpu.PC, rel);
+                cpu.PC = cpu.PC.wrapping_add(rel as u16)
             }
         }
         Instruction::JumpHL => {
@@ -59,6 +59,7 @@ pub fn handle_instruction(
             let condition = cpu.check_condition(condition);
 
             if condition {
+                action_taken = true;
                 cpu.PC = memory_bus.read_stack_16(&mut cpu.SP);
                 trace!("Read {:#X} from stack @ {:#X}", cpu.PC, cpu.SP);
             }

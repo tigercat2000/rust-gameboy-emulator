@@ -1,5 +1,5 @@
 use bit_field::BitField;
-use tracing::{debug, trace, warn};
+use tracing::{debug, trace};
 
 use crate::emulator::{
     instructions::{Instruction, Register16, Register8},

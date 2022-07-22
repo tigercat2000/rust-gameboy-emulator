@@ -153,18 +153,6 @@ impl MemoryBus {
         }
     }
 
-    pub fn read_stack_16(&self, sp: &mut u16) -> u16 {
-        let upper = self.read_stack(sp) as u16;
-        let lower = self.read_stack(sp) as u16;
-        upper << 8 | lower
-    }
-
-    pub fn read_stack(&self, sp: &mut u16) -> u8 {
-        let val = self.read_u8(*sp);
-        *sp = sp.wrapping_add(1);
-        val
-    }
-
     pub fn read_u8(&self, addr: u16) -> u8 {
         match addr {
             0x0000..=0x7FFF => {
@@ -300,17 +288,6 @@ impl MemoryBus {
             self.read_u8(addr + 2),
             self.read_u8(addr + 3),
         ]
-    }
-
-    // TODO: Find out if this is the correct order
-    pub fn write_stack_16(&self, sp: &mut u16, word: u16) {
-        self.write_stack(sp, word.get_bits(0..8) as u8);
-        self.write_stack(sp, word.get_bits(8..16) as u8);
-    }
-
-    pub fn write_stack(&self, sp: &mut u16, byte: u8) {
-        *sp = sp.wrapping_sub(1);
-        self.write_u8(*sp, byte);
     }
 
     pub fn write_u8(&self, addr: u16, byte: u8) {
@@ -467,6 +444,29 @@ impl MemoryBus {
             }
             _ => panic!("Illegal memory write at {:#X}", addr),
         }
+    }
+
+    // Stack Ops
+    pub fn read_stack_16(&self, sp: &mut u16) -> u16 {
+        let lower = self.read_stack(sp) as u16;
+        let upper = self.read_stack(sp) as u16;
+        upper << 8 | lower
+    }
+
+    pub fn read_stack(&self, sp: &mut u16) -> u8 {
+        let val = self.read_u8(*sp);
+        *sp = sp.wrapping_add(1);
+        val
+    }
+
+    pub fn write_stack_16(&self, sp: &mut u16, word: u16) {
+        self.write_stack(sp, word.get_bits(8..16) as u8);
+        self.write_stack(sp, word.get_bits(0..8) as u8);
+    }
+
+    pub fn write_stack(&self, sp: &mut u16, byte: u8) {
+        *sp = sp.wrapping_sub(1);
+        self.write_u8(*sp, byte);
     }
 
     pub fn request_interrupt(&self, interrupt: Interrupt) {

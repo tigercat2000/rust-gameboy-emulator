@@ -18,15 +18,19 @@ pub fn handle_instruction(
         Instruction::AccumulatorFlag(af_op) => match af_op {
             AccumulatorFlagOp::RotateLeftCarryA => {
                 cpu.Accumulator = ALU::rotate_left_carry(cpu, cpu.Accumulator);
+                cpu.set_flag(Flag::Z, false);
             }
             AccumulatorFlagOp::RotateRightCarryA => {
                 cpu.Accumulator = ALU::rotate_right_carry(cpu, cpu.Accumulator);
+                cpu.set_flag(Flag::Z, false);
             }
             AccumulatorFlagOp::RotateLeftA => {
                 cpu.Accumulator = ALU::rotate_left(cpu, cpu.Accumulator);
+                cpu.set_flag(Flag::Z, false);
             }
             AccumulatorFlagOp::RotateRightA => {
                 cpu.Accumulator = ALU::rotate_right(cpu, cpu.Accumulator);
+                cpu.set_flag(Flag::Z, false);
             }
             AccumulatorFlagOp::DecimalAdjustAfterAddition => {
                 cpu.Accumulator = ALU::decimal_adjust_after_addition(cpu, cpu.Accumulator);
@@ -140,7 +144,7 @@ pub fn handle_instruction(
         Instruction::Bit(bit, reg) => {
             cpu.set_flag(
                 Flag::Z,
-                match reg {
+                !match reg {
                     Register8::B => cpu.B.get_bit(bit as usize),
                     Register8::C => cpu.C.get_bit(bit as usize),
                     Register8::D => cpu.D.get_bit(bit as usize),
@@ -381,13 +385,17 @@ impl ALU {
     }
 
     pub fn rotate_right_carry(cpu: &mut CPU, value: u8) -> u8 {
-        let carry = value.get_bit(0);
-        let mut new_value = value >> 1;
-        if carry {
-            new_value.set_bit(7, true);
-        }
-        Self::sr_flag_update(cpu, carry, new_value);
+        let co = value & 0x01;
+        let new_value = value.rotate_right(1);
+        cpu.set_flag(Flag::Z, new_value == 0);
+        cpu.set_flag(Flag::N, false);
+        cpu.set_flag(Flag::H, false);
+        cpu.set_flag(Flag::C, co != 0);
         new_value
+        // let carry = value.get_bit(0);
+        // let new_value = value.rotate_right(1);
+        // Self::sr_flag_update(cpu, carry, new_value);
+        // new_value
     }
 
     pub fn rotate_left(cpu: &mut CPU, value: u8) -> u8 {
@@ -402,10 +410,7 @@ impl ALU {
 
     pub fn rotate_left_carry(cpu: &mut CPU, value: u8) -> u8 {
         let carry = value.get_bit(7);
-        let mut new_value = value << 1;
-        if carry {
-            new_value.set_bit(0, true);
-        }
+        let new_value = value.rotate_left(1);
         Self::sr_flag_update(cpu, carry, new_value);
         new_value
     }
@@ -470,16 +475,16 @@ impl ALU {
         cpu.set_flag(Flag::Z, new_value == 0);
         cpu.set_flag(Flag::N, false);
         // Half-carry is set if the lower 4 bits added together overflow
-        cpu.set_flag(Flag::H, (cpu.Accumulator & 0xF) + (value & 0xF) > 0xF);
+        cpu.set_flag(Flag::H, value & 0xF == 0xF);
         new_value
     }
 
     pub fn decrement(cpu: &mut CPU, value: u8) -> u8 {
         let new_value = value.wrapping_sub(1);
         cpu.set_flag(Flag::Z, new_value == 0);
-        cpu.set_flag(Flag::N, false);
+        cpu.set_flag(Flag::N, true);
         // Half-carry is set if the lower 4 bits added together overflow
-        cpu.set_flag(Flag::H, (cpu.Accumulator & 0xF) + (value & 0xF) > 0xF);
+        cpu.set_flag(Flag::H, (value & 0xF) == 0);
         new_value
     }
 

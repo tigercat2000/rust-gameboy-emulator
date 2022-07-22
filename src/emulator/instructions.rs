@@ -694,7 +694,7 @@ impl Instruction {
                 let (rest, immediate) = u8(rest)?;
                 Ok((rest, Instruction::AluImmediate(opcode.into(), immediate)))
             }
-            (0b11, exp, 0b111) => Ok((rest, Instruction::Reset(exp))),
+            (0b11, exp, 0b111) => Ok((rest, Instruction::Reset(exp << 3))),
             (a, b, c) => {
                 eprintln!(
                     "Illegal instruction {:#X?} ({:#04b}, {:#05b}, {:#05b})",
