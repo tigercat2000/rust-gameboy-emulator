@@ -502,8 +502,8 @@ impl ALU {
     }
 
     pub fn write_16(upper: &mut u8, lower: &mut u8, value: u16) {
-        *upper = value.get_bits(8..16) as u8;
         *lower = value.get_bits(0..8) as u8;
+        *upper = value.get_bits(8..16) as u8;
     }
 
     pub fn add_rel(addr: u16, rel: i8) -> u16 {
