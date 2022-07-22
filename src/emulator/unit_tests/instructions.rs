@@ -79,11 +79,11 @@ test_success!(ret_Z, [0xC8] => Instruction::RetConditional(Condition::Z));
 test_success!(ret_NC, [0xD0] => Instruction::RetConditional(Condition::NC));
 test_success!(ret_C, [0xD8] => Instruction::RetConditional(Condition::C));
 // LDH (n),A / LD (0xFF00 + u8) (n),A
-test_success!(load_highpage_a, [0xE0, 0x69] => Instruction::LoadHighPageA(0x69));
+test_success!(load_highpage_a, [0xE0, 0x69] => Instruction::LoadHighPageAImmediate(0x69));
 // ADD SP, i8
 test_success!(add_sp, [0xE8, 0x5] => Instruction::AddSp(0x5));
 // LDH A,(n) / LD (0xFF00 + u8) A,(n)
-test_success!(load_a_highpage, [0xF0, 0x69] => Instruction::LoadAHighPage(0x69));
+test_success!(load_a_highpage, [0xF0, 0x69] => Instruction::LoadAHighPageImmediate(0x69));
 test_success!(load_hl_sp, [0xF8, 0x5] => Instruction::LoadHLSP(0x5));
 // Pop
 test_success!(pop_bc, [0xC1] => Instruction::Pop(Register16Stack::BC));

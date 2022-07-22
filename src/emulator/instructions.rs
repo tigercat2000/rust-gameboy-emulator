@@ -269,11 +269,11 @@ pub enum Instruction {
     /// RET Z
     RetConditional(Condition),
     /// LDH (n),A / LD (0xFF00 + u8) (n),A
-    LoadHighPageA(u8),
+    LoadHighPageAImmediate(u8),
     /// ADD SP, i8
     AddSp(i8),
     /// LDH A,(n) / LD (0xFF00 + u8) A,(n)
-    LoadAHighPage(u8),
+    LoadAHighPageImmediate(u8),
     /// LD HL, SP+u8
     LoadHLSP(i8),
     /// POP r16
@@ -362,9 +362,13 @@ impl std::fmt::Display for Instruction {
             Instruction::RetConditional(condition) => {
                 write!(f, "RetConditional({:#X?})", condition)
             }
-            Instruction::LoadHighPageA(offset) => write!(f, "LoadHighPageA({:#X})", offset),
+            Instruction::LoadHighPageAImmediate(offset) => {
+                write!(f, "LoadHighPageA({:#X})", offset)
+            }
             Instruction::AddSp(offset) => write!(f, "AddSp({:#X})", offset),
-            Instruction::LoadAHighPage(offset) => write!(f, "LoadAHighPage({:#X})", offset),
+            Instruction::LoadAHighPageImmediate(offset) => {
+                write!(f, "LoadAHighPage({:#X})", offset)
+            }
             Instruction::LoadHLSP(offset) => write!(f, "LoadHLSP({:#X})", offset),
             Instruction::Pop(register) => write!(f, "Pop({:#X?})", register),
             Instruction::Ret => write!(f, "Ret"),
@@ -428,9 +432,9 @@ impl Instruction {
             Instruction::Load(_, _) => 1,
             Instruction::Alu(_, _) => 1,
             Instruction::RetConditional(_) => 1,
-            Instruction::LoadHighPageA(_) => 2,
+            Instruction::LoadHighPageAImmediate(_) => 2,
             Instruction::AddSp(_) => 2,
-            Instruction::LoadAHighPage(_) => 2,
+            Instruction::LoadAHighPageImmediate(_) => 2,
             Instruction::LoadHLSP(_) => 2,
             Instruction::Pop(_) => 1,
             Instruction::Ret => 1,
@@ -495,9 +499,9 @@ impl Instruction {
                     2
                 }
             }
-            Instruction::LoadHighPageA(_) => 3,
+            Instruction::LoadHighPageAImmediate(_) => 3,
             Instruction::AddSp(_) => 4,
-            Instruction::LoadAHighPage(_) => 3,
+            Instruction::LoadAHighPageImmediate(_) => 3,
             Instruction::LoadHLSP(_) => 3,
             Instruction::Pop(_) => 4,
             Instruction::Ret => 4,
@@ -616,7 +620,7 @@ impl Instruction {
             )),
             (0b11, 0b100, 0b000) => {
                 let (rest, offset) = u8(rest)?;
-                Ok((rest, Instruction::LoadHighPageA(offset)))
+                Ok((rest, Instruction::LoadHighPageAImmediate(offset)))
             }
             (0b11, 0b101, 0b000) => {
                 let (rest, offset) = i8(rest)?;
@@ -624,7 +628,7 @@ impl Instruction {
             }
             (0b11, 0b110, 0b000) => {
                 let (rest, offset) = u8(rest)?;
-                Ok((rest, Instruction::LoadAHighPage(offset)))
+                Ok((rest, Instruction::LoadAHighPageImmediate(offset)))
             }
             (0b11, 0b111, 0b000) => {
                 let (rest, offset) = i8(rest)?;
