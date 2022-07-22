@@ -7,6 +7,8 @@ use crate::emulator::{
     GAMEBOY_HEIGHT, GAMEBOY_WIDTH,
 };
 
+use super::memory_bus::Interrupt;
+
 pub type FrameBuffer = [u8; GAMEBOY_HEIGHT * GAMEBOY_WIDTH];
 
 #[derive(Debug, Default)]
@@ -76,6 +78,7 @@ impl PPU {
                 self.hblanking = true;
             }
             1 => {
+                memory_bus.request_interrupt(Interrupt::VBlank);
                 self.updated = true;
             }
             _ => {}

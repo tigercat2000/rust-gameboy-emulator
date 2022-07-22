@@ -8,6 +8,8 @@ pub const SCROLL_Y: u16 = 0xFF42;
 pub const SCROLL_X: u16 = 0xFF43;
 pub const LCD_Y: u16 = 0xFF44;
 pub const PALLETE: u16 = 0xFF47;
+pub const IF: u16 = 0xFF0F;
+pub const IE: u16 = 0xFFFF;
 
 #[derive(Debug)]
 #[allow(clippy::upper_case_acronyms)]
@@ -45,6 +47,82 @@ impl Default for LCD {
     }
 }
 
+pub enum Interrupt {
+    /// INT 40
+    VBlank,
+    /// INT 48
+    LCDStat,
+    /// INT 50
+    Timer,
+    /// INT 58
+    Serial,
+    /// INT 60
+    Joypad,
+}
+
+#[derive(Debug, Default)]
+struct Interrupts {
+    /// INT 40
+    pub vblank_enabled: bool,
+    /// INT 48
+    pub lcd_stat_enabled: bool,
+    /// INT 50
+    pub timer_enabled: bool,
+    /// INT 58
+    pub serial_enabled: bool,
+    /// INT 60
+    pub joypad_enabled: bool,
+
+    /// INT 40
+    pub vblank_requested: bool,
+    /// INT 48
+    pub lcd_stat_requested: bool,
+    /// INT 50
+    pub timer_requested: bool,
+    /// INT 58
+    pub serial_requested: bool,
+    /// INT 60
+    pub joypad_requested: bool,
+}
+
+impl Interrupts {
+    fn get_interrupt_enable(&self) -> u8 {
+        let mut new_number = 0;
+        new_number.set_bit(0, self.vblank_enabled);
+        new_number.set_bit(1, self.lcd_stat_enabled);
+        new_number.set_bit(2, self.timer_enabled);
+        new_number.set_bit(3, self.serial_enabled);
+        new_number.set_bit(4, self.joypad_enabled);
+        new_number
+    }
+
+    fn set_interrupt_enable(&mut self, byte: u8) {
+        self.vblank_enabled = byte.get_bit(0);
+        self.lcd_stat_enabled = byte.get_bit(1);
+        self.timer_enabled = byte.get_bit(2);
+        self.serial_enabled = byte.get_bit(3);
+        self.joypad_enabled = byte.get_bit(4);
+    }
+
+    fn get_interrupt_flag(&self) -> u8 {
+        let mut new_number = 0;
+        new_number.set_bit(0, self.vblank_requested);
+        new_number.set_bit(1, self.lcd_stat_requested);
+        new_number.set_bit(2, self.timer_requested);
+        new_number.set_bit(3, self.serial_requested);
+        new_number.set_bit(4, self.joypad_requested);
+        new_number
+    }
+
+    fn set_interrupt_flag(&mut self, byte: u8) {
+        self.vblank_requested = byte.get_bit(0);
+        self.lcd_stat_requested = byte.get_bit(1);
+        self.timer_requested = byte.get_bit(2);
+        self.serial_requested = byte.get_bit(3);
+        self.joypad_requested = byte.get_bit(4);
+    }
+}
+
 #[derive(Debug)]
 pub struct MemoryBus {
     program: Vec<u8>,
@@ -54,6 +132,7 @@ pub struct MemoryBus {
     oam: Mutex<RefCell<[u8; 0xFE9F - 0xFE00 + 1]>>,
     hram: Mutex<RefCell<[u8; 0xFFFE - 0xFF80 + 1]>>,
     lcd: Mutex<RefCell<LCD>>,
+    interrupts: Mutex<RefCell<Interrupts>>,
 }
 
 impl MemoryBus {
@@ -68,6 +147,7 @@ impl MemoryBus {
             oam: Mutex::new(RefCell::new([0; 0xFE9F - 0xFE00 + 1])),
             hram: Mutex::new(RefCell::new([0; 0xFFFE - 0xFF80 + 1])),
             lcd: Mutex::new(RefCell::new(LCD::default())),
+            interrupts: Mutex::new(RefCell::new(Interrupts::default())),
         }
     }
 
@@ -161,6 +241,32 @@ impl MemoryBus {
                     _ => unimplemented!(),
                 }
             }
+            // Interrupt Flag (IF)
+            IF => {
+                let interrupts_guard = self.interrupts.try_lock();
+                let val = match interrupts_guard {
+                    Ok(interrupts) => match interrupts.try_borrow() {
+                        Ok(interrupts) => interrupts.get_interrupt_flag(),
+                        Err(_) => return 0x00,
+                    },
+                    Err(_) => return 0x00,
+                };
+                trace!("IF read @{:#X}: {:#X}", addr, val);
+                val
+            }
+            // Interrupt Enable (IE)
+            IE => {
+                let interrupts_guard = self.interrupts.try_lock();
+                let val = match interrupts_guard {
+                    Ok(interrupts) => match interrupts.try_borrow() {
+                        Ok(interrupts) => interrupts.get_interrupt_enable(),
+                        Err(_) => return 0x00,
+                    },
+                    Err(_) => return 0x00,
+                };
+                trace!("IE read @{:#X}: {:#X}", addr, val);
+                val
+            }
             0xFF00..=0xFF7F => {
                 warn!("Unimplemented IO register read @{:#X}", addr);
                 0x00
@@ -184,13 +290,13 @@ impl MemoryBus {
     #[allow(clippy::identity_op)]
     pub fn get_instr(&self, addr: u16) -> [u8; 4] {
         if addr >= 0x7FFF {
-            panic!("Invalid instruction address");
+            warn!("Reading instruction outside of ROM @{:#X}", addr);
         }
         [
-            self.program[(addr + 0) as usize],
-            self.program[(addr + 1) as usize],
-            self.program[(addr + 2) as usize],
-            self.program[(addr + 3) as usize],
+            self.get_u8(addr + 0),
+            self.get_u8(addr + 1),
+            self.get_u8(addr + 2),
+            self.get_u8(addr + 3),
         ]
     }
 
@@ -300,6 +406,34 @@ impl MemoryBus {
                     _ => {}
                 }
             }
+            // Interrupt Flag (IF)
+            0xFF0F => {
+                trace!("IF register write @{:#X}: {:#X}", addr, byte);
+                let interrupts_guard = match self.interrupts.try_lock() {
+                    Ok(interrupts_guard) => interrupts_guard,
+                    Err(_) => return,
+                };
+                let mut interrupts = match interrupts_guard.try_borrow_mut() {
+                    Ok(interrupts) => interrupts,
+                    Err(_) => return,
+                };
+
+                interrupts.set_interrupt_flag(byte);
+            }
+            // Interrupt Enable (IE)
+            0xFFFF => {
+                trace!("IE register write @{:#X}: {:#X}", addr, byte);
+                let interrupts_guard = match self.interrupts.try_lock() {
+                    Ok(interrupts_guard) => interrupts_guard,
+                    Err(_) => return,
+                };
+                let mut interrupts = match interrupts_guard.try_borrow_mut() {
+                    Ok(interrupts) => interrupts,
+                    Err(_) => return,
+                };
+
+                interrupts.set_interrupt_enable(byte);
+            }
             // I/O registers
             0xFF00..=0xFF7F => {
                 warn!("Unimplemented IO register write @{:#X}: {:#X}", addr, byte);
@@ -317,11 +451,26 @@ impl MemoryBus {
                 };
                 hram[addr as usize - 0xFF80] = byte
             }
-            // Interrupts
-            0xFFFF => {
-                warn!("Unimplemented interrupt register written to")
-            }
             _ => panic!("Illegal memory write at {:#X}", addr),
+        }
+    }
+
+    pub fn request_interrupt(&self, interrupt: Interrupt) {
+        let interrupts_guard = match self.interrupts.try_lock() {
+            Ok(interrupts_guard) => interrupts_guard,
+            Err(_) => return,
+        };
+        let mut interrupts = match interrupts_guard.try_borrow_mut() {
+            Ok(interrupts) => interrupts,
+            Err(_) => return,
+        };
+
+        match interrupt {
+            Interrupt::VBlank => interrupts.vblank_requested = true,
+            Interrupt::LCDStat => interrupts.lcd_stat_requested = true,
+            Interrupt::Timer => interrupts.timer_requested = true,
+            Interrupt::Serial => interrupts.serial_requested = true,
+            Interrupt::Joypad => interrupts.joypad_requested = true,
         }
     }
 }

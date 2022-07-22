@@ -4,12 +4,16 @@ use tracing::{debug, error, event, info, trace};
 
 use crate::emulator::{
     instructions::{
-        AccumulatorFlagOp, AluOp, Condition, Instruction, Register16, Register16Indirect, Register8,
+        AccumulatorFlagOp, AluOp, Condition, Instruction, Register16, Register16Indirect,
+        Register16Stack, Register8,
     },
     memory_bus::MemoryBus,
 };
 
-use super::instructions::BitwiseOp;
+use super::{
+    instructions::BitwiseOp,
+    memory_bus::{IE, IF},
+};
 
 pub enum Flag {
     /// Zero flag
@@ -37,6 +41,8 @@ pub struct CPU {
     pub SP: u16,
     pub PC: u16,
     pub stop: bool,
+    pub halted: bool,
+    pub IME: bool,
 }
 
 impl Default for CPU {
@@ -52,7 +58,9 @@ impl Default for CPU {
             L: Default::default(),
             SP: Default::default(),
             PC: 0x100,
-            stop: Default::default(),
+            stop: false,
+            halted: false,
+            IME: false,
         }
     }
 }
@@ -83,6 +91,10 @@ impl std::fmt::Display for CPU {
 }
 
 impl CPU {
+    pub fn get_af(&self) -> u16 {
+        ((self.Accumulator as u16) << 8) | (self.Flags as u16)
+    }
+
     pub fn get_bc(&self) -> u16 {
         ((self.B as u16) << 8) | (self.C as u16)
     }
@@ -140,12 +152,18 @@ impl CPU {
             self.get_hl(),
             self.SP,
         );
+
+        match self.handle_interrupt(memory_bus) {
+            0 => {}
+            n => return n as u32,
+        };
+
+        if self.halted {
+            return 1;
+        }
+
         match instr {
-            Instruction::Nop => {
-                if self.PC > 0x400 {
-                    panic!("NOP is bug right now");
-                }
-            }
+            Instruction::Nop => {}
             Instruction::Jump(target) => {
                 self.PC = target;
             }
@@ -419,14 +437,69 @@ impl CPU {
                 }
                 Register8::A => self.Accumulator = self.Accumulator.wrapping_sub(1),
             },
+            Instruction::Push(register) => match register {
+                Register16Stack::BC => {
+                    let value = self.get_bc();
+                    memory_bus.write_stack_16(&mut self.SP, value);
+                }
+                Register16Stack::DE => {
+                    let value = self.get_de();
+                    memory_bus.write_stack_16(&mut self.SP, value);
+                }
+                Register16Stack::HL => {
+                    let value = self.get_hl();
+                    memory_bus.write_stack_16(&mut self.SP, value);
+                }
+                Register16Stack::AF => {
+                    let value = self.get_af();
+                    memory_bus.write_stack_16(&mut self.SP, value);
+                }
+            },
+            Instruction::Pop(register) => match register {
+                Register16Stack::BC => {
+                    ALU::write_16(
+                        &mut self.B,
+                        &mut self.C,
+                        memory_bus.get_stack_16(&mut self.SP),
+                    );
+                }
+                Register16Stack::DE => {
+                    ALU::write_16(
+                        &mut self.D,
+                        &mut self.E,
+                        memory_bus.get_stack_16(&mut self.SP),
+                    );
+                }
+                Register16Stack::HL => {
+                    ALU::write_16(
+                        &mut self.H,
+                        &mut self.L,
+                        memory_bus.get_stack_16(&mut self.SP),
+                    );
+                }
+                Register16Stack::AF => {
+                    ALU::write_16(
+                        &mut self.Accumulator,
+                        &mut self.Flags,
+                        memory_bus.get_stack_16(&mut self.SP),
+                    );
+                }
+            },
             Instruction::JumpHL => {
                 self.PC = self.get_hl();
             }
-
-            // TODO: Support interrupts
-            Instruction::DisableInterrupts => {}
-            // TODO: Support interrupts
-            Instruction::EnableInterrupts => {}
+            Instruction::DisableInterrupts => {
+                self.IME = false;
+            }
+            Instruction::EnableInterrupts => {
+                self.IME = true;
+            }
+            Instruction::RetInterrupt => {
+                let addr = memory_bus.get_stack_16(&mut self.SP);
+                trace!("Read {:#X} from stack @ {:#X}", addr, self.SP);
+                self.PC = addr;
+                self.IME = true;
+            }
             Instruction::Call(imm) => {
                 trace!("Writing {:#X} to stack @ {:#X}", self.PC, self.SP);
                 memory_bus.write_stack_16(&mut self.SP, self.PC);
@@ -566,8 +639,7 @@ impl CPU {
                 ALU::handle_bitwise(self, op, register, memory_bus);
             }
             Instruction::Halt => {
-                // TODO: Handle interrupts
-                self.PC = old_pc;
+                self.halted = true;
             }
             Instruction::Reset(offset) => {
                 memory_bus.write_stack_16(&mut self.SP, self.PC);
@@ -672,6 +744,37 @@ impl CPU {
             Register8::IndirectHL => memory_bus.get_u8(self.get_hl()),
             Register8::A => self.Accumulator,
         }
+    }
+
+    fn handle_interrupt(&mut self, memory_bus: &MemoryBus) -> u8 {
+        if !self.IME && !self.halted {
+            return 0;
+        }
+
+        let mut interrupts_requested = memory_bus.get_u8(IF);
+        let triggered = interrupts_requested & memory_bus.get_u8(IE);
+        if triggered == 0 {
+            return 0;
+        }
+
+        self.halted = false;
+        if !self.IME {
+            return 0;
+        }
+        self.IME = false;
+
+        let n = triggered.trailing_zeros();
+        if n >= 5 {
+            unreachable!("Invalid interrupt triggered")
+        }
+
+        interrupts_requested.set_bit(n as usize, false);
+        memory_bus.write_u8(IF, interrupts_requested);
+
+        memory_bus.write_stack_16(&mut self.SP, self.PC);
+        self.PC = 0x0040 | (n as u16) << 3;
+
+        4
     }
 }
 
@@ -864,6 +967,11 @@ impl ALU {
         addr = addr.wrapping_sub(1);
         *lower = addr.get_bits(0..8) as u8;
         *upper = addr.get_bits(8..16) as u8;
+    }
+
+    pub fn write_16(upper: &mut u8, lower: &mut u8, value: u16) {
+        *upper = value.get_bits(8..16) as u8;
+        *lower = value.get_bits(0..8) as u8;
     }
 
     pub fn add_rel(addr: u16, rel: i8) -> u16 {
