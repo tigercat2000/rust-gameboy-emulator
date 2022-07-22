@@ -36,8 +36,8 @@ impl CPU {
     // Instruction Fetcher
     pub fn next_instruction(&mut self, memory_bus: &MemoryBus) -> Instruction {
         let instr = memory_bus.get_instr(self.PC);
-        let (_, actual_instr) =
-            Instruction::parse(&instr).expect("Instruction parsing should never fail");
+        let (_, actual_instr) = Instruction::parse(&instr)
+            .unwrap_or_else(|_| panic!("Instruction parsing failed at {:#X}", self.PC));
         self.PC = self.PC.wrapping_add(actual_instr.byte_len());
         actual_instr
     }

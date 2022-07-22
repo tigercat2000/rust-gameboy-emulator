@@ -1,4 +1,5 @@
 use bit_field::BitField;
+use tracing::warn;
 #[allow(unused_imports)]
 use tracing::{debug, error, event, info, trace};
 
@@ -66,6 +67,16 @@ impl Default for CPU {
 impl CPU {
     /// Ticks in M-cycles (4 T-cycles)
     pub fn tick(&mut self, memory_bus: &mut MemoryBus) -> u32 {
+        match self.handle_interrupt(memory_bus) {
+            0 => {}
+            n => return n as u32,
+        };
+
+        if self.halted {
+            warn!("Pausing due to HALT");
+            return 1;
+        }
+
         let old_pc = self.PC;
         let instr = self.next_instruction(memory_bus);
         debug!("Executing instruction {} at {:#X}", instr, old_pc);
@@ -76,15 +87,6 @@ impl CPU {
             self.get_hl(),
             self.SP,
         );
-
-        match self.handle_interrupt(memory_bus) {
-            0 => {}
-            n => return n as u32,
-        };
-
-        if self.halted {
-            return 1;
-        }
 
         if let Some(num) = alu::handle_instruction(self, instr, memory_bus) {
             return num;
@@ -159,6 +161,7 @@ impl CPU {
                 self.IME = true;
             }
             Instruction::Halt => {
+                warn!("Encountered HALT, halting");
                 self.halted = true;
             }
             _ => {
@@ -278,6 +281,10 @@ impl CPU {
             None => return 0,
         };
 
+        warn!(
+            "Unsetting halted because interrupt {:#?} was found",
+            next_interrupt
+        );
         self.halted = false;
         if !self.IME {
             return 0;

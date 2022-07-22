@@ -47,7 +47,7 @@ impl Default for LCD {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub enum Interrupt {
     /// INT 40
     VBlank,

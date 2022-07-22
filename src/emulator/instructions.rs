@@ -1,6 +1,6 @@
 use bit_field::BitField;
 use nom::{
-    combinator::map,
+    combinator::{fail, map},
     error::VerboseError,
     number::complete::{i8, le_u16, u8},
     IResult,
@@ -700,7 +700,7 @@ impl Instruction {
                     "Illegal instruction {:#X?} ({:#04b}, {:#05b}, {:#05b})",
                     opcode, a, b, c
                 );
-                unimplemented!()
+                fail(&[])
             }
         }
     }

@@ -70,9 +70,9 @@ pub fn run() -> Arc<DoubleBuffer> {
         let buffer = emu_buffer;
         // let file = include_bytes!("../roms/test.gb");
         // let file = include_bytes!("../roms/hello-world.gb");
-        let file = include_bytes!("../roms/tetris.gb");
+        // let file = include_bytes!("../roms/tetris.gb");
         // let file = include_bytes!("../roms/alu-test.gb");
-        // let file = include_bytes!("../roms/dmg-acid2.gb");
+        let file = include_bytes!("../roms/dmg-acid2.gb");
         // let file = include_bytes!("../roms/cpu_instrs.gb");
         // let file = include_bytes!("../roms/01-special.gb");
         // let file = include_bytes!("../roms/02-interrupts.gb");
