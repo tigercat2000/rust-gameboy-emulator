@@ -208,6 +208,15 @@ impl MemoryBus {
                 trace!("WRAM read @{:#X}: {:#X}", addr, val);
                 val
             }
+            // ECHO RAM
+            0xE000..=0xFDFF => {
+                warn!(
+                    "(continuing) Illegal read from ECHO RAM @{:#X} Reroute: {:#X}",
+                    addr,
+                    addr - 0x2000
+                );
+                self.read_u8(addr - 0x2000)
+            }
             // OAM
             0xFE00..=0xFE9F => {
                 let oam_guard = self.oam.try_lock();
@@ -350,6 +359,16 @@ impl MemoryBus {
                     Err(_) => return,
                 };
                 wram[addr as usize - 0xD000] = byte
+            }
+            // ECHO RAM
+            0xE000..=0xFDFF => {
+                warn!(
+                    "(continuing) Illegal write to ECHO RAM @{:#X}: {:#X} Reroute: {:#X}",
+                    addr,
+                    byte,
+                    addr - 0x2000
+                );
+                self.write_u8(addr - 0x2000, byte)
             }
             // OAM
             0xFE00..=0xFE9F => {
