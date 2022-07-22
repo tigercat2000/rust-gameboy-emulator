@@ -232,8 +232,8 @@ impl From<u8> for BitwiseOp {
 pub enum Instruction {
     /// NOP
     Nop,
-    /// LD SP, u16
-    LoadSP(u16),
+    /// LD (u16), SP
+    LoadIndirectSP(u16),
     /// STOP
     Stop,
     /// JR i8
@@ -328,7 +328,7 @@ impl std::fmt::Display for Instruction {
         // write!(f, "Instruction::")?;
         match self {
             Instruction::Nop => write!(f, "Nop"),
-            Instruction::LoadSP(immediate) => write!(f, "LoadSP({:#X})", immediate),
+            Instruction::LoadIndirectSP(immediate) => write!(f, "LoadSP({:#X})", immediate),
             Instruction::Stop => write!(f, "Stop"),
             Instruction::JumpRelative(offset) => write!(f, "JumpRelative({:#X})", offset),
             Instruction::JumpRelativeConditional(condition, offset) => {
@@ -414,7 +414,7 @@ impl Instruction {
     pub fn byte_len(&self) -> u16 {
         match *self {
             Instruction::Nop => 1,
-            Instruction::LoadSP(_) => 3,
+            Instruction::LoadIndirectSP(_) => 3,
             Instruction::Stop => 2,
             Instruction::JumpRelative(_) => 2,
             Instruction::JumpRelativeConditional(_, _) => 2,
@@ -465,7 +465,7 @@ impl Instruction {
     pub fn ticks(&self, action_taken: bool) -> u32 {
         match self {
             Instruction::Nop => 1,
-            Instruction::LoadSP(_) => 3,
+            Instruction::LoadIndirectSP(_) => 3,
             Instruction::Stop => 1,
             Instruction::JumpRelative(_) => 3,
             Instruction::JumpRelativeConditional(_, _) => {
@@ -560,7 +560,7 @@ impl Instruction {
         match (p3, p2, p1) {
             // Group one
             (0b00, 0b000, 0b000) => Ok((rest, Instruction::Nop)),
-            (0b00, 0b001, 0b000) => map(le_u16, Instruction::LoadSP)(rest),
+            (0b00, 0b001, 0b000) => map(le_u16, Instruction::LoadIndirectSP)(rest),
             (0b00, 0b010, 0b000) => Ok((rest, Instruction::Stop)),
             (0b00, 0b011, 0b000) => map(i8, Instruction::JumpRelative)(rest),
             (0b00, condition, 0b000) if condition.get_bit(2) == true => {

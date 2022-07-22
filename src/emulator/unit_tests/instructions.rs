@@ -11,7 +11,7 @@ pub mod bitwise;
 pub mod load;
 
 test_success!(nop, [0x00] => Instruction::Nop);
-test_success!(load_sp, [0x08, 0xAD, 0xDE] => Instruction::LoadSP(0xDEAD));
+test_success!(load_sp, [0x08, 0xAD, 0xDE] => Instruction::LoadIndirectSP(0xDEAD));
 test_success!(stop, [0x10] => Instruction::Stop);
 // JR
 test_success!(jr_unconditional, [0x18, 0xA] => Instruction::JumpRelative(0xA));

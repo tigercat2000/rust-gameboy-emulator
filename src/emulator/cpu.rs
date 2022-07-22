@@ -56,7 +56,7 @@ impl Default for CPU {
             E: Default::default(),
             H: Default::default(),
             L: Default::default(),
-            SP: Default::default(),
+            SP: 0xFFFE,
             PC: 0x100,
             stop: false,
             halted: false,

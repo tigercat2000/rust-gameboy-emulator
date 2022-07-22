@@ -1,5 +1,5 @@
 use bit_field::BitField;
-use tracing::trace;
+use tracing::{debug, trace};
 
 use crate::emulator::{
     instructions::{Instruction, Register16, Register8},
@@ -123,6 +123,15 @@ pub fn handle_instruction(
         Instruction::LoadIndirectA(reg_with_addr) => {
             let addr = cpu.get_indirect(reg_with_addr);
             memory_bus.write_u8(addr, cpu.Accumulator);
+        }
+        // Stack pointer ops
+        Instruction::LoadIndirectSP(addr) => {
+            memory_bus.write_u8(addr, cpu.SP.get_bits(0..8) as u8);
+            memory_bus.write_u8(addr + 1, cpu.SP.get_bits(8..16) as u8);
+        }
+        Instruction::LoadSPHL => {
+            debug!("Put {:#X} into SP", cpu.get_hl());
+            cpu.SP = cpu.get_hl();
         }
         _ => return None,
     }

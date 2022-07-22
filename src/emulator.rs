@@ -75,8 +75,8 @@ pub fn run() -> Arc<DoubleBuffer> {
         // let file = include_bytes!("../roms/dmg-acid2.gb");
         // let file = include_bytes!("../roms/cpu_instrs.gb");
         // let file = include_bytes!("../roms/01-special.gb");
-        let file = include_bytes!("../roms/04-op r,imm.gb");
-        // let file = include_bytes!("../roms/03-op sp,hl.gb");
+        // let file = include_bytes!("../roms/04-op r,imm.gb");
+        let file = include_bytes!("../roms/03-op sp,hl.gb");
 
         let memory_bus = MemoryBus::new(file.as_slice());
         let mut cpu = CPU::default();
