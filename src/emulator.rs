@@ -11,6 +11,7 @@ pub mod memory_bus;
 use memory_bus::MemoryBus;
 pub mod ppu;
 use ppu::PPU;
+
 #[cfg(test)]
 pub mod unit_tests;
 
@@ -106,7 +107,6 @@ pub fn run() -> Arc<DoubleBuffer> {
             // Contention can still happen if the render thread is rendering when we swap
             drop(lock);
             buffer.swap();
-
             periodic.recv().unwrap();
         }
     });

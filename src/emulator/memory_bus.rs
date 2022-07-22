@@ -206,7 +206,7 @@ impl MemoryBus {
                 val
             }
             // Joypad
-            0xFF00 => 0b0011_1111,
+            0xFF00 => 0b1111_1111,
             0xFF40..=0xFF4B => {
                 trace!("LCD register read @{:#X}", addr);
                 match addr {
@@ -218,7 +218,10 @@ impl MemoryBus {
                     PALLETE => self.lcd.background_pallete,
                     0xFF4A => self.lcd.window_y,
                     0xFF4B => self.lcd.window_x,
-                    _ => unimplemented!(),
+                    _ => {
+                        error!("Attempted to read unimplemented LCD register {:#X}", addr);
+                        unimplemented!()
+                    }
                 }
             }
             // Interrupt Flag (IF)
