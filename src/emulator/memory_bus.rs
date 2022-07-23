@@ -4,9 +4,11 @@ use bit_field::BitField;
 use tracing::{error, trace, warn};
 
 pub const LCDC: u16 = 0xFF40;
+pub const STAT: u16 = 0xFF41;
 pub const SCROLL_Y: u16 = 0xFF42;
 pub const SCROLL_X: u16 = 0xFF43;
 pub const LCD_Y: u16 = 0xFF44;
+pub const LCD_YC: u16 = 0xFF45;
 pub const PALLETE: u16 = 0xFF47;
 pub const IF: u16 = 0xFF0F;
 pub const IE: u16 = 0xFFFF;
@@ -136,6 +138,38 @@ impl Interrupts {
     }
 }
 
+#[derive(Debug, Default)]
+struct LCDStatus {
+    mode: u8,
+    ly_compare: bool,
+    mode_0_hblank_interrupt: bool,
+    mode_1_vblank_interrupt: bool,
+    mode_2_oam_interrupt: bool,
+    ly_compare_interrupt: bool,
+}
+
+impl LCDStatus {
+    fn read(&self) -> u8 {
+        let mut num = 0;
+        num.set_bits(0..2, self.mode);
+        num.set_bit(2, self.ly_compare);
+        num.set_bit(3, self.mode_0_hblank_interrupt);
+        num.set_bit(4, self.mode_1_vblank_interrupt);
+        num.set_bit(4, self.mode_2_oam_interrupt);
+        num.set_bit(5, self.ly_compare_interrupt);
+        num
+    }
+
+    fn write(&mut self, byte: u8) {
+        self.mode = byte.get_bits(0..2);
+        self.ly_compare = byte.get_bit(2);
+        self.mode_0_hblank_interrupt = byte.get_bit(3);
+        self.mode_1_vblank_interrupt = byte.get_bit(4);
+        self.mode_2_oam_interrupt = byte.get_bit(5);
+        self.ly_compare_interrupt = byte.get_bit(6);
+    }
+}
+
 #[derive(Debug)]
 pub struct MemoryBus {
     program: Vec<u8>,
@@ -147,6 +181,7 @@ pub struct MemoryBus {
     oam: [u8; 0xFE9F - 0xFE00 + 1],
     hram: [u8; 0xFFFE - 0xFF80 + 1],
     lcd: LCD,
+    lcd_stat: LCDStatus,
     interrupts: Interrupts,
     console_buffer: String,
 }
@@ -164,6 +199,7 @@ impl MemoryBus {
             oam: [0; 0xFE9F - 0xFE00 + 1],
             hram: [0; 0xFFFE - 0xFF80 + 1],
             lcd: LCD::default(),
+            lcd_stat: LCDStatus::default(),
             interrupts: Interrupts::default(),
             console_buffer: String::new(),
         }
@@ -211,10 +247,11 @@ impl MemoryBus {
                 trace!("LCD register read @{:#X}", addr);
                 match addr {
                     LCDC => self.lcd.lcd_control,
+                    STAT => self.lcd_stat.read(),
                     SCROLL_Y => self.lcd.scroll_y,
                     SCROLL_X => self.lcd.scroll_x,
                     LCD_Y => self.lcd.lcd_y,
-                    0xFF45 => self.lcd.lcd_y_cmp,
+                    LCD_YC => self.lcd.lcd_y_cmp,
                     PALLETE => self.lcd.background_pallete,
                     0xFF4A => self.lcd.window_y,
                     0xFF4B => self.lcd.window_x,
@@ -335,10 +372,11 @@ impl MemoryBus {
                             self.lcd.lcd_y = 0;
                         }
                     }
+                    STAT => self.lcd_stat.write(byte),
                     SCROLL_Y => self.lcd.scroll_y = byte,
                     SCROLL_X => self.lcd.scroll_x = byte,
                     LCD_Y => self.lcd.lcd_y = byte,
-                    0xFF45 => self.lcd.lcd_y_cmp = byte,
+                    LCD_YC => self.lcd.lcd_y_cmp = byte,
                     PALLETE => self.lcd.background_pallete = byte,
                     0xFF4A => self.lcd.window_y = byte,
                     0xFF4B => self.lcd.window_x = byte,
@@ -430,6 +468,20 @@ impl MemoryBus {
             return Some(Interrupt::Joypad);
         }
         None
+    }
+
+    pub fn get_lcd_mode(&self) -> u8 {
+        self.lcd_stat.mode
+    }
+
+    pub fn set_lcd_mode(&mut self, mode: u8) {
+        self.lcd_stat.mode = mode;
+    }
+
+    pub fn update_lcd_stat(&mut self) {
+        let ly = self.read_u8(LCD_Y);
+        let lyc = self.read_u8(LCD_YC);
+        self.lcd_stat.ly_compare = ly == lyc;
     }
 
     pub fn hram_dump(&self) {

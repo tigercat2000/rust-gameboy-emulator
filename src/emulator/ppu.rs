@@ -15,7 +15,6 @@ pub type FrameBuffer = [u8; GAMEBOY_HEIGHT * GAMEBOY_WIDTH];
 pub struct PPU {
     pub updated: bool,
     mode_clock: u32,
-    mode: u8,
     hblanking: bool,
 }
 
@@ -42,6 +41,7 @@ impl PPU {
                 self.mode_clock -= 456;
                 lcd_y = (lcd_y + 1) % 154;
                 memory_bus.write_u8(LCD_Y, lcd_y);
+                memory_bus.update_lcd_stat();
 
                 if lcd_y >= 144 {
                     self.change_mode_if_necessary(1, memory_bus, frame_buffer);
@@ -64,7 +64,7 @@ impl PPU {
         memory_bus: &mut MemoryBus,
         frame_buffer: &mut FrameBuffer,
     ) {
-        if self.mode != mode {
+        if memory_bus.get_lcd_mode() != mode {
             self.change_mode(mode, memory_bus, frame_buffer);
         }
     }
@@ -75,9 +75,9 @@ impl PPU {
         memory_bus: &mut MemoryBus,
         frame_buffer: &mut FrameBuffer,
     ) {
-        self.mode = mode;
+        memory_bus.set_lcd_mode(mode);
 
-        match self.mode {
+        match mode {
             0 => {
                 self.render_scanline(memory_bus, frame_buffer);
                 self.hblanking = true;
