@@ -1,7 +1,7 @@
 use std::io::Read;
 
 use bit_field::BitField;
-use tracing::{error, trace, warn};
+use tracing::{debug, error, trace, warn};
 
 pub const LCDC: u16 = 0xFF40;
 pub const STAT: u16 = 0xFF41;
@@ -273,6 +273,11 @@ impl MemoryBus {
                 trace!("IE read @{:#X}: {:#X}", addr, val);
                 val
             }
+            // Sound Controller
+            0xFF10..=0xFF3F => {
+                debug!("Sound Register Read @{:#X}", addr);
+                0x00
+            }
             0xFF01..=0xFF7F => {
                 warn!("Unimplemented IO register read @{:#X}", addr);
                 0x00
@@ -392,6 +397,10 @@ impl MemoryBus {
             0xFFFF => {
                 trace!("IE register write @{:#X}: {:#X}", addr, byte);
                 self.interrupts.set_interrupt_enable(byte);
+            }
+            // Sound Controller
+            0xFF10..=0xFF3F => {
+                debug!("Sound Register write @{:#X}: {:#X}", addr, byte);
             }
             // I/O registers
             0xFF03..=0xFF7F => {
